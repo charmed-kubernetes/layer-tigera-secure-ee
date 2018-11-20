@@ -11,10 +11,10 @@ options:
     description: |
       The image id to use for calico/kube-controllers.
   ipip:
-    type: boolean
-    default: false
+    type: string
+    default: Always
     description: |
-      Enable IP tunneling
+      IPIP mode. Must be one of "Always", "CrossSubnet", or "Never".
   nat-outgoing:
     type: boolean
     default: true
