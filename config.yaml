@@ -12,7 +12,7 @@ options:
       The image id to use for calico/kube-controllers.
   ipip:
     type: string
-    default: Always
+    default: Never
     description: |
       IPIP mode. Must be one of "Always", "CrossSubnet", or "Never".
   nat-outgoing:
