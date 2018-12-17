@@ -20,7 +20,17 @@ ExecStart=/usr/bin/docker run --net=host --privileged --name=calico-node \
   -e CALICO_LIBNETWORK_ENABLED=true \
   -e IP6= \
   -e CALICO_NETWORKING_BACKEND=bird \
+  -e CALICO_DISABLE_FILE_LOGGING=true \
   -e FELIX_DEFAULTENDPOINTTOHOSTACTION=ACCEPT \
+  -e FELIX_IPV6SUPPORT=false \
+  -e FELIX_LOGSEVERITYSCREEN=info \
+  -e FELIX_HEALTHENABLED=true \
+  -e FELIX_PROMETHEUSREPORTERENABLED=true \
+  -e FELIX_PROMETHEUSREPORTERPORT=9081 \
+  -e FELIX_FLOWLOGSFILEENABLED=true \
+  -e FELIX_FLOWLOGSFILEINCLUDELABELS=true \
+  -e FELIX_FLOWLOGSFILEINCLUDEPOLICIES=true \
+  -e FELIX_FLOWLOGSENABLENETWORKSETS=true \
   -v /var/run/calico:/var/run/calico \
   -v /var/lib/calico:/var/lib/calico \
   -v /lib/modules:/lib/modules \
