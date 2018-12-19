@@ -1,4 +1,6 @@
 import os
+import yaml
+from base64 import b64decode
 from socket import gethostname
 from subprocess import call, check_call, check_output, CalledProcessError
 
@@ -226,6 +228,30 @@ def configure_master_cni():
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
+    status_set('maintenance', 'Applying registry credentials secret')
+    encoded_creds = hookenv.config('registry-credentials')
+    secret = {
+        'apiVersion': 'v1',
+        'kind': 'Secret',
+        'metadata': {
+            'name': 'cnx-pull-secret',
+            'namespace': 'kube-system'
+        },
+        'data': {
+            '.dockerconfigjson': encoded_creds
+        },
+        'type': 'kubernetes.io/dockerconfigjson'
+    }
+    dest = '/tmp/cnx-pull-secret.yaml'
+    with open(dest, 'w') as f:
+        yaml.dump(secret, f)
+    try:
+        kubectl('apply', '-f', dest)
+    except CalledProcessError as e:
+        log('Waiting to retry cnx-pull-secret creation')
+        status_set('waiting', 'Waiting to retry cnx-pull-secret creation')
+        return
+
     status_set('maintenance', 'Deploying network policy controller.')
     etcd = endpoint_from_flag('etcd.available')
     context = {
@@ -236,17 +262,14 @@ def deploy_network_policy_controller():
         'calico_policy_image': hookenv.config('calico-policy-image')
     }
     render('policy-controller.yaml', '/tmp/policy-controller.yaml', context)
-    cmd = ['kubectl',
-           '--kubeconfig=/root/.kube/config',
-           'apply',
-           '-f',
-           '/tmp/policy-controller.yaml']
     try:
-        check_call(cmd)
-        set_state('calico.npc.deployed')
+        kubectl('apply', '-f', '/tmp/policy-controller.yaml')
     except CalledProcessError as e:
         status_set('waiting', 'Waiting for kubernetes')
         log(str(e))
+        return
+
+    set_state('calico.npc.deployed')
 
 
 @when('calico.service.started', 'calico.pool.configured',
@@ -257,6 +280,24 @@ def ready():
         status_set('waiting', 'Waiting for service: calico-node')
     else:
         status_set('active', 'Calico is active')
+
+
+@when('config.changed.registry-credentials')
+def registry_credentials_changed():
+    status_set('maintenance', 'Applying registry credentials')
+    encoded_creds = hookenv.config('registry-credentials')
+    creds = b64decode(encoded_creds).decode('utf-8')
+    config_dir = '/root/.docker'
+    config_path = config_dir + '/config.json'
+    os.makedirs(config_dir, exist_ok=True)
+    with open(config_path, 'w') as f:
+        f.write(creds)
+    remove_state('calico.npc.deployed')
+
+
+def kubectl(*args):
+    cmd = ['kubectl', '--kubeconfig=/root/.kube/config'] + list(args)
+    return check_output(cmd)
 
 
 def arch():

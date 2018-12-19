@@ -2,12 +2,12 @@ options:
   calico-node-image:
     type: string
     # Please refer to layer-canal/versioning.md before changing the version below.
-    default: quay.io/calico/node:v2.6.12
+    default: quay.io/tigera/cnx-node:v2.2.1
     description: |
       The image id to use for calico/node.
   calico-policy-image:
     type: string
-    default: quay.io/calico/kube-controllers:v1.0.5
+    default: quay.io/tigera/kube-controllers:v2.2.1
     description: |
       The image id to use for calico/kube-controllers.
   ipip:
@@ -20,3 +20,10 @@ options:
     default: true
     description: |
       NAT outgoing traffic
+  registry-credentials:
+    type: string
+    default: ""
+    description: |
+      Private docker registry credentials, in the form of a base64-encoded
+      docker config.json file. Example:
+      `juju config tigera-ee registry-credentials="$(base64 -w0 config.json)"`
