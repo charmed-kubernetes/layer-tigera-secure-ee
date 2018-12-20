@@ -1,6 +1,6 @@
 import os
 import yaml
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from socket import gethostname
 from subprocess import call, check_call, check_output, CalledProcessError
 
@@ -247,27 +247,46 @@ def deploy_network_policy_controller():
         yaml.dump(secret, f)
     try:
         kubectl('apply', '-f', dest)
-    except CalledProcessError as e:
-        log('Waiting to retry cnx-pull-secret creation')
+    except CalledProcessError:
         status_set('waiting', 'Waiting to retry cnx-pull-secret creation')
         return
 
-    status_set('maintenance', 'Deploying network policy controller.')
     etcd = endpoint_from_flag('etcd.available')
-    context = {
-        'connection_string': etcd.get_connection_string(),
-        'etcd_key_path': ETCD_KEY_PATH,
-        'etcd_cert_path': ETCD_CERT_PATH,
-        'etcd_ca_path': ETCD_CA_PATH,
-        'calico_policy_image': hookenv.config('calico-policy-image')
-    }
-    render('policy-controller.yaml', '/tmp/policy-controller.yaml', context)
-    try:
-        kubectl('apply', '-f', '/tmp/policy-controller.yaml')
-    except CalledProcessError as e:
-        status_set('waiting', 'Waiting for kubernetes')
-        log(str(e))
-        return
+    templates = [
+        ('policy-controller.yaml', {
+            'connection_string': etcd.get_connection_string(),
+            'etcd_key_path': ETCD_KEY_PATH,
+            'etcd_cert_path': ETCD_CERT_PATH,
+            'etcd_ca_path': ETCD_CA_PATH,
+            'calico_policy_image': hookenv.config('calico-policy-image')
+        }),
+        ('calico-config.yaml', {
+            'etcd_endpoints': etcd.get_connection_string()
+        }),
+        ('calico-etcd-secrets.yaml', {
+            'etcd_key': read_file_to_base64(ETCD_KEY_PATH),
+            'etcd_cert': read_file_to_base64(ETCD_CERT_PATH),
+            'etcd_ca': read_file_to_base64(ETCD_CA_PATH)
+        }),
+        ('cnx-manager-tls-secret.yaml', {
+            # FIXME: We're just stealing a server key and cert from a random
+            # worker. What should really go here?
+            'key': read_file_to_base64('/root/cdk/server.key'),
+            'cert': read_file_to_base64('/root/cdk/server.crt')
+        }),
+        ('cnx-etcd.yaml', {}),
+        ('cnx-policy.yaml', {})
+    ]
+
+    for template, context in templates:
+        status_set('maintenance', 'Applying ' + template)
+        try:
+            kubectl_apply_template(template, context)
+        except CalledProcessError:
+            msg = 'Waiting to retry applying ' + template
+            log(msg)
+            status_set('waiting', msg)
+            return
 
     set_state('calico.npc.deployed')
 
@@ -298,6 +317,19 @@ def registry_credentials_changed():
 def kubectl(*args):
     cmd = ['kubectl', '--kubeconfig=/root/.kube/config'] + list(args)
     return check_output(cmd)
+
+
+def kubectl_apply_template(template, context):
+    dest = '/tmp/' + template
+    render(template, dest, context)
+    kubectl('apply', '-f', dest)
+
+
+def read_file_to_base64(path):
+    with open(path, 'rb') as f:
+        contents = f.read()
+    contents = b64encode(contents).decode('utf-8')
+    return contents
 
 
 def arch():

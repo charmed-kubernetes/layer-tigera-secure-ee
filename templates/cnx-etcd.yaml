@@ -1,0 +1,556 @@
+
+# This manifest adds the additional Tigera Secure EE Manager components to a cluster
+# that has already had the Calico part of Tigera Secure EE deployed.
+# - It refers to the calico-config ConfigMap and calico-etcd-secrets Secret
+#   from that file, so if you are not using the provided hosted Calico
+#   manifest you must update references to those resources in this file.
+# - Update the tigera-cnx-manager-config ConfigMap below before use.
+# - Optionally update the cnx-apiserver-certs ConfigMap and caBundle in the
+#   apiregistration section below to use your TLS certs for secure communication
+#   between the Tigera Secure EE API server and Kubernetes API server.
+# - This manifest makes the Tigera Secure EE Manager web server available via a NodePort
+#   serving on port 30003.  You may wish to update how this is exposed; do
+#   so by editing the cnx-manager Service below.
+
+# Update this ConfigMap with the Google login client id.
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: tigera-cnx-manager-config
+  namespace: kube-system
+data:
+  # Authentication type.  Must be set to "OIDC", "Basic", "Token", or "OAuth".
+  tigera.cnx-manager.authentication-type: "Basic"
+  # The OIDC authority.  Required if authentication-type is OIDC, ignored otherwise.
+  tigera.cnx-manager.oidc-authority: "https://accounts.google.com"
+  # The OIDC client id to use for OIDC login.  Kubelet must be configured accordingly.
+  # Value is ignored if not using OIDC login.
+  tigera.cnx-manager.oidc-client-id: "<oidc-client-id>"
+  # The OAuth endpoint. Required if authentication-type is OAuth, ignored otherwise.
+  tigera.cnx-manager.oauth-authority: "https://<oauth-authority>/oauth/authorize"
+  # The OAuth client id to use for OAuth login. Value is ignored if not using OAuth login.
+  tigera.cnx-manager.oauth-client-id: "cnx-manager"
+  # Prometheus server resource path
+  tigera.cnx-manager.prometheus-api-url: "/api/v1/namespaces/calico-monitoring/services/calico-node-prometheus:9090/proxy/api/v1"
+  # Query api url
+  tigera.cnx-manager.query-api-url: "/api/v1/namespaces/kube-system/services/https:cnx-api:8080/proxy"
+  # Elasticsearch service resource path
+  tigera.cnx-manager.elasticsearch-api-url: "/api/v1/namespaces/calico-monitoring/services/elasticsearch-tigera-elasticsearch:9200/proxy"
+  # Path to Kibana.  The default is for a port forwarded to the NodePort included with the operator based install.
+  # Replace this with the URL of your Kibana if you installed it yourself or are accessing it differently.
+  tigera.cnx-manager.kibana-url: "http://127.0.0.1:30601"
+  # Whether sentry.io automatic error reporting of client side UI bugs is enabled.
+  tigera.cnx-manager.error-tracking: "false"
+  # Enable ALP support in the UI
+  tigera.cnx-manager.alp-support: "false"
+
+---
+
+# Optionally update this ConfigMap to enable TLS with certificate verification when Tigera Secure EE API
+# server communicates with the Kubernetes API server.
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: cnx-apiserver-certs
+  namespace: kube-system
+data:
+  # Populate the following files with apiserver TLS configuration if desired,
+  # but leave blank if not using TLS with certificate verification.
+  # This self-hosted install expects two files with the following names. The values
+  # should be base64 encoded strings of the entire contents of each file.
+  #apiserver.key:
+  #apiserver.crt:
+
+---
+
+# Optionally update this Service to change how Tigera Secure EE Manager is accessed.
+# If using Google login, the URL for the web server must be configured
+# as a redirect URI in the Google project.  If the web server will be
+# accessed at https://<host>:<port>, add https://<host>:<port>/login/oidc/callback
+# to the redirect URI list for the project.
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    k8s-app: cnx-manager
+  name: cnx-manager
+  namespace: kube-system
+spec:
+  selector:
+    k8s-app: cnx-manager
+  ports:
+    - port: 8080
+      targetPort: 9443
+      nodePort: 30003
+  type: NodePort
+
+---
+
+# Optionally update this ConfigMap to use your own caBundle.
+apiVersion: apiregistration.k8s.io/v1beta1
+kind: APIService
+metadata:
+  name: v3.projectcalico.org
+spec:
+  group: projectcalico.org
+  versionPriority: 200
+  groupPriorityMinimum: 200
+  service:
+    name: cnx-api
+    namespace: kube-system
+  version: v3
+  # Optionally update the caBundle and disable insecureSkipTLSVerify in order
+  # to enable TLS certificate verification.
+  insecureSkipTLSVerify: true
+  #caBundle:
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: calico:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: cnx-apiserver
+  namespace: kube-system
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: calico-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: cnx-apiserver
+  namespace: kube-system
+
+---
+
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: cnx-apiserver
+  namespace: kube-system
+
+---
+
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: cnx-manager
+  namespace: kube-system
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: cnx-api
+  namespace: kube-system
+spec:
+  ports:
+  - name: apiserver
+    port: 443
+    protocol: TCP
+    targetPort: 5443
+  - name: queryserver
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    apiserver: "true"
+
+---
+
+# Audit policy for the Tigera Secure EE API Server.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-policy-ee
+  namespace: kube-system
+data:
+  config: |-
+    apiVersion: audit.k8s.io/v1beta1
+    kind: Policy
+    rules:
+    - level: RequestResponse
+      omitStages:
+      - RequestReceived
+      verbs:
+      - create
+      - patch
+      - update
+      - delete
+      resources:
+      - group: projectcalico.org
+        resources:
+        - globalnetworkpolicies
+        - networkpolicies
+        - globalnetworksets
+        - tiers
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: cnx-apiserver
+  namespace: kube-system
+  labels:
+    apiserver: "true"
+    k8s-app: cnx-apiserver
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      apiserver: "true"
+  template:
+    metadata:
+      name: cnx-apiserver
+      namespace: kube-system
+      labels:
+        apiserver: "true"
+        k8s-app: cnx-apiserver
+    spec:
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+      serviceAccountName: cnx-apiserver
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+      imagePullSecrets:
+        - name: cnx-pull-secret
+      containers:
+      - name: cnx-apiserver
+        image: quay.io/tigera/cnx-apiserver:v2.2.1
+        args:
+          - "--secure-port=5443"
+          - "--audit-policy-file=/etc/tigera/audit/policy.conf"
+          - "--audit-log-path=/var/log/calico/audit/tsee-audit.log"
+        env:
+          - name: ETCD_ENDPOINTS
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_endpoints
+          - name: DATASTORE_TYPE
+            value: "etcdv3"
+          # Location of the CA certificate for etcd.
+          - name: ETCD_CA_CERT_FILE
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_ca
+          # Location of the client key for etcd.
+          - name: ETCD_KEY_FILE
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_key
+          # Location of the client certificate for etcd.
+          - name: ETCD_CERT_FILE
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_cert
+        volumeMounts:
+          - mountPath: /var/log/calico/audit
+            name: var-log-calico-audit
+          - mountPath: /etc/tigera/audit
+            name: audit-policy-ee
+          - mountPath: /calico-secrets
+            name: etcd-certs
+          # - mountPath: /code/apiserver.local.config/certificates
+          #   name: apiserver-certs
+        livenessProbe:
+          httpGet:
+            path: /apis/
+            port: 5443
+            scheme: HTTPS
+          initialDelaySeconds: 90
+          periodSeconds: 10
+      - name: cnx-queryserver
+        image: quay.io/tigera/cnx-queryserver:v2.2.1
+        env:
+          # Set queryserver logging to "info"
+          - name: LOGLEVEL
+            value: "info"
+          - name: ETCD_ENDPOINTS
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_endpoints
+          - name: DATASTORE_TYPE
+            value: "etcdv3"
+          # If you're using TLS enabled etcd uncomment the following.
+          # Location of the CA certificate for etcd.
+          - name: ETCD_CA_CERT_FILE
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_ca
+          # Location of the client key for etcd.
+          - name: ETCD_KEY_FILE
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_key
+          # Location of the client certificate for etcd.
+          - name: ETCD_CERT_FILE
+            valueFrom:
+              configMapKeyRef:
+                name: calico-config
+                key: etcd_cert
+        volumeMounts:
+          - mountPath: /calico-secrets
+            name: etcd-certs
+        livenessProbe:
+          httpGet:
+            path: /version
+            port: 8080
+            scheme: HTTPS
+          initialDelaySeconds: 90
+          periodSeconds: 10
+      volumes:
+        # Volume for audit logs output
+        - name: var-log-calico-audit
+          hostPath:
+            path: /var/log/calico/audit
+            type: DirectoryOrCreate
+        - name: audit-policy-ee
+          configMap:
+            name: audit-policy-ee
+            items:
+            - key: config
+              path: policy.conf
+        # Mount in the etcd TLS secrets with mode 400.
+        # See https://kubernetes.io/docs/concepts/configuration/secret/
+        - name: etcd-certs
+          secret:
+            secretName: calico-etcd-secrets
+        # If you're using TLS with certificate verification then
+        # uncomment the following.
+        # - name: apiserver-certs
+        #   secret:
+        #     secretName: cnx-apiserver-certs
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: cnx-manager
+  namespace: kube-system
+  labels:
+    k8s-app: cnx-manager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      name: cnx-manager
+      namespace: kube-system
+      labels:
+        k8s-app: cnx-manager
+      annotations:
+        # Mark this pod as a critical add-on; when enabled, the critical add-on scheduler
+        # reserves resources for critical add-on pods so that they can be rescheduled after
+        # a failure.  This annotation works in tandem with the toleration below.
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+      serviceAccountName: cnx-manager
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      # Allow this pod to be rescheduled while the node is in "critical add-ons only" mode.
+      # This, along with the annotation above marks this pod as a critical add-on.
+      - key: CriticalAddonsOnly
+        operator: Exists
+      imagePullSecrets:
+        - name: cnx-pull-secret
+      # cnx-manager-init-pem writes a "pem" file into a volume shared by
+      # cnx-manager-proxy.
+      initContainers:
+      - name: cnx-manager-init-pem # create /cache/pem for cnx-manager-proxy
+        image: alpine:3.7
+        command: ['sh', '-c', 'cat /etc/cnx-manager-web-tls/cert /etc/cnx-manager-web-tls/key > /cache/pem']
+        volumeMounts:
+        - mountPath: /cache
+          name: cnx-cache-volume
+        - mountPath: /etc/cnx-manager-web-tls
+          name: cnx-manager-tls
+      containers:
+      - name: cnx-manager
+        image: quay.io/tigera/cnx-manager:v2.2.1
+        env:
+          - name: CNX_WEB_AUTHENTICATION_TYPE
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.authentication-type
+          - name: CNX_WEB_OIDC_AUTHORITY
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oidc-authority
+          - name: CNX_WEB_OIDC_CLIENT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oidc-client-id
+          - name: CNX_PROMETHEUS_API_URL
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.prometheus-api-url
+          - name: CNX_QUERY_API_URL
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.query-api-url
+          - name: CNX_ELASTICSEARCH_API_URL
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.elasticsearch-api-url
+          - name: CNX_ELASTICSEARCH_KIBANA_URL
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.kibana-url
+          - name: CNX_ENABLE_ERROR_TRACKING
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.error-tracking
+          - name: CNX_ALP_SUPPORT
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.alp-support
+          - name: CNX_WEB_OAUTH_AUTHORITY
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oauth-authority
+          - name: CNX_WEB_OAUTH_CLIENT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oauth-client-id
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 90
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /etc/cnx-manager-web-tls
+          name: cnx-manager-tls
+      - name: cnx-manager-proxy
+        image: quay.io/tigera/cnx-manager-proxy:v2.2.1
+        env:
+          - name: CNX_WEB_AUTHENTICATION_TYPE
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.authentication-type
+          - name: CNX_WEB_OIDC_AUTHORITY
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oidc-authority
+          - name: CNX_WEB_OIDC_CLIENT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oidc-client-id
+          - name: CNX_WEB_OAUTH_AUTHORITY
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oauth-authority
+          - name: CNX_WEB_OAUTH_CLIENT_ID
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.oauth-client-id
+        volumeMounts:
+        - mountPath: /etc/cnx-manager-web-tls
+          name: cnx-manager-tls
+        - mountPath: /cache
+          name: cnx-cache-volume
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9443
+            scheme: HTTPS
+          initialDelaySeconds: 90
+          periodSeconds: 10
+      volumes:
+      - name: cnx-cache-volume
+        emptyDir: {}
+      - name: cnx-manager-tls
+        secret:
+          secretName: cnx-manager-tls
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: tigera-ui-user
+rules:
+# "list" requests that the Tigera EE Manager needs
+- apiGroups: ["projectcalico.org","networking.k8s.io","extensions",""]
+  resources: ["tiers","networkpolicies","globalnetworkpolicies","namespaces","globalnetworksets"]
+  verbs: ["watch","list"]
+# Access to flow logs, audit logs, and statistics
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  resourceNames: ["https:cnx-api:8080", "calico-node-prometheus:9090", "https:elasticsearch-tigera-elasticsearch:8443", "elasticsearch-tigera-elasticsearch:9200"]
+  verbs: ["get","create"]
+# Access to policies in the default tier
+- apiGroups: ["projectcalico.org"]
+  resources: ["tiers"]
+  resourceNames: ["default"]
+  verbs: ["get"]
+---
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: network-admin
+rules:
+# Full access to all network policies
+- apiGroups: ["projectcalico.org","networking.k8s.io","extensions"]
+  resources: ["tiers","networkpolicies","globalnetworkpolicies","globalnetworksets"]
+  verbs: ["create","update","delete","patch","get","watch","list"]
+# Additional "list" requests that the Tigera EE Manager needs
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["watch","list"]
+# Access to flow logs, audit logs, and statistics
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  resourceNames: ["https:cnx-api:8080", "calico-node-prometheus:9090", "https:elasticsearch-tigera-elasticsearch:8443", "elasticsearch-tigera-elasticsearch:9200"]
+  verbs: ["get","create"]
+---
+
