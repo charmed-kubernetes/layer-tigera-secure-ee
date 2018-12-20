@@ -35,3 +35,11 @@ options:
       Tigera EE license key, base64-encoded. Example:
 
       juju config tigera-ee license-key=$(base64 -w0 license.yaml)
+  enable-elasticsearch-operator:
+    type: boolean
+    default: true
+    description: |
+      Enable deployment of elasticsearch-operator into Kubernetes. This
+      provides a monitoring and metrics solution for use with Tigera EE that
+      is suitable for proof-of-concept purposes, but is not recommended for
+      production use.

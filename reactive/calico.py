@@ -257,27 +257,28 @@ def deploy_network_policy_controller():
 
     # elasticsearch-operator junk
     # elasticsearch-operator requires vm.max_map_count>=262144 on the host
-    check_call(['sysctl', 'vm.max_map_count=262144'])
-    try:
-        output = kubectl('get', 'endpoints', 'kubernetes', '-o', 'json')
-    except CalledProcessError:
-        msg = 'Waiting to retry getting apiserver endpoints'
-        log(msg)
-        status_set('waiting', msg)
-        return
-    data = json.loads(output)
-    apiserver_ips = []
-    for subset in data['subsets']:
-        for address in subset['addresses']:
-            ip = address['ip']
-            apiserver_ips.append(ip)
-    templates += [
-        ('elasticsearch-operator.yaml', {}),
-        ('monitor-calico.yaml', {
-            'apiserver_ips': json.dumps(apiserver_ips)
-        }),
-        ('kibana-dashboards.yaml', {})
-    ]
+    if hookenv.config('enable-elasticsearch-operator'):
+        check_call(['sysctl', 'vm.max_map_count=262144'])
+        try:
+            output = kubectl('get', 'endpoints', 'kubernetes', '-o', 'json')
+        except CalledProcessError:
+            msg = 'Waiting to retry getting apiserver endpoints'
+            log(msg)
+            status_set('waiting', msg)
+            return
+        data = json.loads(output)
+        apiserver_ips = []
+        for subset in data['subsets']:
+            for address in subset['addresses']:
+                ip = address['ip']
+                apiserver_ips.append(ip)
+        templates += [
+            ('elasticsearch-operator.yaml', {}),
+            ('monitor-calico.yaml', {
+                'apiserver_ips': json.dumps(apiserver_ips)
+            }),
+            ('kibana-dashboards.yaml', {})
+        ]
 
     for template, context in templates:
         status_set('maintenance', 'Applying ' + template)
