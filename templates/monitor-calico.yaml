@@ -1,0 +1,526 @@
+---
+# This manifest includes the following component versions:
+#   quay.io/prometheus/prometheus:v2.2.1
+#   quay.io/prometheus/alertmanager:v0.14.0
+#   docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.1
+#   docker.elastic.co/kibana/kibana-oss:6.4.1
+#
+# This manifest installs the Service which gets traffic to the calico-node metrics
+# reporting endpoint.
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: kube-system
+  name: calico-node-metrics
+  labels:
+    k8s-app: calico-node
+spec:
+  selector:
+    k8s-app: calico-node
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: calico-metrics-port
+    port: 9081
+    targetPort: 9081
+    protocol: TCP
+---
+
+# This manifest creates a network policy to allow traffic to Alertmanager
+# (TCP port 9093).
+apiVersion: extensions/v1beta1
+kind: NetworkPolicy
+metadata:
+  name: calico-node-alertmanager
+  namespace: calico-monitoring
+spec:
+  ingress:
+  - ports:
+    - port: 9093
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      alertmanager: calico-node-alertmanager
+      app: alertmanager
+---
+
+# This manifest creates a network policy to allow traffic between
+# Alertmanagers for HA configuration (TCP port 6783).
+apiVersion: extensions/v1beta1
+kind: NetworkPolicy
+metadata:
+  name: calico-node-alertmanager-mesh
+  namespace: calico-monitoring
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - alertmanager
+        - key: alertmanager
+          operator: In
+          values:
+          - calico-node-alertmanager
+    ports:
+    - port: 6783
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      alertmanager: calico-node-alertmanager
+      app: alertmanager
+---
+
+# This manifest creates a network policy to allow traffic to access the
+# Prometheus (TCP port 9090).
+apiVersion: extensions/v1beta1
+kind: NetworkPolicy
+metadata:
+  name: prometheus
+  namespace: calico-monitoring
+spec:
+  ingress:
+  - ports:
+    - port: 9090
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: prometheus
+      prometheus: calico-node-prometheus
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["get"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: calico-monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: calico-monitoring
+---
+
+# This manifest creates a ServiceMonitor to select calico-node metrics endpoints.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: calico-node-monitor
+  namespace: calico-monitoring
+  labels:
+    team: network-operators
+spec:
+  selector:
+    matchLabels:
+      k8s-app: calico-node
+  namespaceSelector:
+    matchNames:
+    - kube-system
+  endpoints:
+  - port: calico-metrics-port
+    interval: 5s
+    scrapeTimeout: 5s
+    honorLabels: true
+---
+
+
+# This ConfigMap is used to create the denied packets alerting rules in Prometheus.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calico-prometheus-dp-rate
+  namespace: calico-monitoring
+  labels:
+    role: calico-prometheus-rules
+    prometheus: calico-node-prometheus
+data:
+  calico.rules.yaml: |+
+    groups:
+    - name: ./calico.rules
+      rules:
+      - alert: DeniedPacketsRate
+        expr: rate(calico_denied_packets[10s]) > 50
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{'{{$labels.instance}}'}} - Large rate of packets denied"
+          description: "{{'{{$labels.instance}}'}} with calico-node pod {{'{{$labels.pod}}'}} has been denying packets at a fast rate {{'{{$labels.sourceIp}}'}} by policy {{'{{$labels.policy}}'}}."
+
+
+---
+
+# This manifest creates a secret that will be mounted as the Alertmanager
+# configuration file.
+# Write your alertmanager configuration file based on
+# https://prometheus.io/docs/alerting/configuration/
+# and save it to a file, say alertmanager.yaml and then run:
+#
+#       $ cat alertmanager.yaml | base64 -w 0
+#
+# and paste the output below.
+#
+# The encoded secret below decodes to this configuration.
+#
+# global:
+#   resolve_timeout: 5m
+# route:
+#   group_by: ['job']
+#   group_wait: 30s
+#   group_interval: 1m
+#   repeat_interval: 5m
+#   receiver: 'webhook'
+#     group_by: ['alertname']
+# receivers:
+# - name: 'webhook'
+#   webhook_configs:
+#   - url: 'http://calico-alertmanager-webhook:30501/'
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-calico-node-alertmanager
+  namespace: calico-monitoring
+data:
+  alertmanager.yaml: Z2xvYmFsOgogIHJlc29sdmVfdGltZW91dDogNW0Kcm91dGU6CiAgZ3JvdXBfYnk6IFsnam9iJ10KICBncm91cF93YWl0OiAzMHMKICBncm91cF9pbnRlcnZhbDogMW0KICByZXBlYXRfaW50ZXJ2YWw6IDVtCiAgcmVjZWl2ZXI6ICd3ZWJob29rJwpyZWNlaXZlcnM6Ci0gbmFtZTogJ3dlYmhvb2snCiAgd2ViaG9va19jb25maWdzOgogIC0gdXJsOiAnaHR0cDovL2NhbGljby1hbGVydG1hbmFnZXItd2ViaG9vazozMDUwMS8nCg==
+---
+
+# This manifest creates the Tigera Secure EE Alertmanager.
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: calico-node-alertmanager
+  namespace: calico-monitoring
+spec:
+  version: v0.14.0
+  baseImage: quay.io/prometheus/alertmanager
+  nodeSelector:
+    beta.kubernetes.io/os: linux
+    # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
+    #node.role: infrastructure
+  replicas: 3
+---
+
+# This manifest installs the Service which gets traffic to the Calico
+# AlertManager.
+apiVersion: v1
+kind: Service
+metadata:
+  name: calico-node-alertmanager
+  namespace: calico-monitoring
+spec:
+  type: NodePort
+  ports:
+  - name: web
+    nodePort: 30903
+    port: 9093
+    protocol: TCP
+    targetPort: web
+  selector:
+    alertmanager: calico-node-alertmanager
+---
+
+# This manifest runs a Prometheus instance that will monitor calico-node
+# denied packet metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: calico-node-prometheus
+  namespace: calico-monitoring
+spec:
+  baseImage: quay.io/prometheus/prometheus
+  nodeSelector:
+    beta.kubernetes.io/os: linux
+    # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
+    #node.role: infrastructure
+  serviceAccountName: prometheus
+  serviceMonitorSelector:
+    matchLabels:
+      team: network-operators
+  version: v2.2.1
+  retention: 24h
+  resources:
+    requests:
+      memory: 400Mi
+  ruleSelector:
+    matchLabels:
+      role: calico-prometheus-rules
+      prometheus: calico-node-prometheus
+  alerting:
+    alertmanagers:
+      - namespace: calico-monitoring
+        name: calico-node-alertmanager
+        port: web
+        scheme: http
+---
+
+# This manifest installs the Service which gets traffic to the Calico
+# Prometheus.
+apiVersion: v1
+kind: Service
+metadata:
+  name: calico-node-prometheus
+  namespace: calico-monitoring
+spec:
+  type: NodePort
+  ports:
+  - name: web
+    nodePort: 30909
+    port: 9090
+    protocol: TCP
+    targetPort: web
+  selector:
+    prometheus: calico-node-prometheus
+---
+
+# Set up the elasticsearch cluster parameters
+# These options can be modified for your deployment - see parameter list at https://github.com/upmc-enterprises/elasticsearch-operator
+apiVersion: enterprises.upmc.com/v1
+kind: ElasticsearchCluster
+metadata:
+  name: tigera-elasticsearch
+  namespace: calico-monitoring
+spec:
+  nodeSelector:
+    beta.kubernetes.io/os: linux
+    # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
+    #node.role: infrastructure
+  kibana:
+    image: docker.elastic.co/kibana/kibana-oss:6.4.1
+  elastic-search-image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.1
+  # For production deployments, modify the number of elasticsearch replicas accordingly
+  client-node-replicas: 1
+  master-node-replicas: 1
+  data-node-replicas: 1
+  network-host: 0.0.0.0
+  zones: []
+  use-ssl: false
+  # For production volumes, consider increasing volume sizes, memory and adding backups
+  data-volume-size: 5Gi
+  java-options: "-Xms256m -Xmx256m"
+  #storage:
+  #  storage-class: elasticsearch-storage
+---
+
+# Add a NodePort for access to Kibana on port 30601.
+# This can be customized if you would like to expose Kibana in a different way.
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: kibana-tigera-elasticsearch
+  name: tigera-kibana
+  namespace: calico-monitoring
+spec:
+  selector:
+    name: kibana-tigera-elasticsearch
+  ports:
+    - port: 5601
+      targetPort: 5601
+      nodePort: 30601
+  type: NodePort
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tigera-fluentd
+  namespace: calico-monitoring
+---
+
+kind: DaemonSet
+apiVersion: extensions/v1beta1
+metadata:
+  name: tigera-fluentd-node
+  namespace: calico-monitoring
+  labels:
+    k8s-app: tigera-fluentd-node
+spec:
+  selector:
+    matchLabels:
+      k8s-app: tigera-fluentd-node
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        k8s-app: tigera-fluentd-node
+    spec:
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+      tolerations:
+        # Make sure  gets scheduled on all nodes.
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+      serviceAccountName: tigera-fluentd
+      imagePullSecrets:
+        - name: cnx-pull-secret
+      initContainers:
+        # The fluentd image runs as user 1000, so make /var/log/calico writable by them
+        - name: chown-logs
+          image: busybox
+          command: ['sh', '-c', 'chown -R 1000:1000 /var/log/calico']
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: var-log-calico
+              mountPath: /var/log/calico
+      containers:
+        - name: fluentd
+          image: quay.io/tigera/fluentd:v2.2.1
+          env:
+            - name: FLOW_LOG_FILE
+              value: /var/log/calico/flowlogs/flows.log
+            - name: ELASTIC_HOST
+              value: elasticsearch-tigera-elasticsearch.calico-monitoring.svc.cluster.local
+            - name: ELASTIC_PORT
+              value: "9200"
+            - name: FLUENTD_ES_SECURE
+              value: "false"
+          volumeMounts:
+            - name: var-log-calico
+              mountPath: /var/log/calico
+      volumes:
+        - name: var-log-calico
+          hostPath:
+            type: DirectoryOrCreate
+            path: /var/log/calico
+
+---
+
+# Network set for the K8s API Server's IP addresses.
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkSet
+metadata:
+  name: k8sapi-endpoints
+  labels:
+    role: k8s-apiserver-endpoints
+spec:
+  nets: {{ apiserver_ips }}
+---
+# Allow access to Elasticsearch client nodes from Kibana and fluentd
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-cnx.elasticsearch-access
+  namespace: calico-monitoring
+spec:
+  order: 1
+  tier: allow-cnx
+  selector: name == 'es-client-tigera-elasticsearch'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    protocol: TCP
+    source:
+      selector: k8s-app == 'tigera-fluentd-node'
+    destination:
+      ports: [9200]
+  - action: Allow
+    protocol: TCP
+    source:
+      selector: name == 'kibana-tigera-elasticsearch'
+    destination:
+      ports: [9200]
+
+---
+
+# Allow access to Elasticsearch client nodes from kube-apiserver
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-cnx.elasticsearch-access
+spec:
+  order: 1
+  tier: allow-cnx
+  selector: name == 'es-client-tigera-elasticsearch'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    protocol: TCP
+    source:
+      selector: role == 'k8s-apiserver-endpoints'
+    destination:
+      ports: [9200]
+
+---
+
+# Allow internal communication within the ElasticSearch cluster
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-cnx.elasticsearch-internal
+  namespace: calico-monitoring
+spec:
+  order: 1
+  tier: allow-cnx
+  selector: cluster == 'tigera-elasticsearch'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    protocol: TCP
+    source:
+      selector: cluster == 'tigera-elasticsearch'
+    destination:
+      ports: [9300]
+
+---
+
+# Allow access to Kibana
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-cnx.kibana-access
+  namespace: calico-monitoring
+spec:
+  order: 1
+  tier: allow-cnx
+  selector: name == 'kibana-tigera-elasticsearch'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    protocol: TCP
+    source:
+      # This policy allows access to Kibana from anywhere.
+      # Narrow this down to your management network or remove this
+      # policy to block access to Kibana.
+      nets: ["0.0.0.0/0"]
+    destination:
+      ports: [5601]
+

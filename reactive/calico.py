@@ -1,5 +1,5 @@
+import json
 import os
-import yaml
 from base64 import b64decode, b64encode
 from socket import gethostname
 from subprocess import check_call, check_output, CalledProcessError
@@ -223,30 +223,13 @@ def configure_master_cni():
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
     status_set('maintenance', 'Applying registry credentials secret')
-    encoded_creds = hookenv.config('registry-credentials')
-    secret = {
-        'apiVersion': 'v1',
-        'kind': 'Secret',
-        'metadata': {
-            'name': 'cnx-pull-secret',
-            'namespace': 'kube-system'
-        },
-        'data': {
-            '.dockerconfigjson': encoded_creds
-        },
-        'type': 'kubernetes.io/dockerconfigjson'
-    }
-    dest = '/tmp/cnx-pull-secret.yaml'
-    with open(dest, 'w') as f:
-        yaml.dump(secret, f)
-    try:
-        kubectl('apply', '-f', dest)
-    except CalledProcessError:
-        status_set('waiting', 'Waiting to retry cnx-pull-secret creation')
-        return
 
     etcd = endpoint_from_flag('etcd.available')
+    encoded_creds = hookenv.config('registry-credentials')
     templates = [
+        ('cnx-pull-secret.yaml', {
+            'credentials': encoded_creds
+        }),
         ('policy-controller.yaml', {
             'connection_string': etcd.get_connection_string(),
             'etcd_key_path': ETCD_KEY_PATH,
@@ -270,6 +253,30 @@ def deploy_network_policy_controller():
         }),
         ('cnx-etcd.yaml', {}),
         ('cnx-policy.yaml', {})
+    ]
+
+    # elasticsearch-operator junk
+    # elasticsearch-operator requires vm.max_map_count>=262144 on the host
+    check_call(['sysctl', 'vm.max_map_count=262144'])
+    try:
+        output = kubectl('get', 'endpoints', 'kubernetes', '-o', 'json')
+    except CalledProcessError:
+        msg = 'Waiting to retry getting apiserver endpoints'
+        log(msg)
+        status_set('waiting', msg)
+        return
+    data = json.loads(output)
+    apiserver_ips = []
+    for subset in data['subsets']:
+        for address in subset['addresses']:
+            ip = address['ip']
+            apiserver_ips.append(ip)
+    templates += [
+        ('elasticsearch-operator.yaml', {}),
+        ('monitor-calico.yaml', {
+            'apiserver_ips': json.dumps(apiserver_ips)
+        }),
+        ('kibana-dashboards.yaml', {})
     ]
 
     for template, context in templates:
