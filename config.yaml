@@ -26,4 +26,12 @@ options:
     description: |
       Private docker registry credentials, in the form of a base64-encoded
       docker config.json file. Example:
-      `juju config tigera-ee registry-credentials="$(base64 -w0 config.json)"`
+
+      juju config tigera-ee registry-credentials=$(base64 -w0 config.json)
+  license-key:
+    type: string
+    default: ""
+    description: |
+      Tigera EE license key, base64-encoded. Example:
+
+      juju config tigera-ee license-key=$(base64 -w0 license.yaml)

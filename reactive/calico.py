@@ -2,7 +2,7 @@ import os
 import yaml
 from base64 import b64decode, b64encode
 from socket import gethostname
-from subprocess import call, check_call, check_output, CalledProcessError
+from subprocess import check_call, check_output, CalledProcessError
 
 from charms.reactive import when, when_not, when_any, set_state, remove_state
 from charms.reactive import hook
@@ -166,12 +166,6 @@ def start_calico_service():
 def configure_calico_pool():
     ''' Configure Calico IP pool. '''
     status_set('maintenance', 'Configuring Calico IP pool')
-    etcd = endpoint_from_flag('etcd.available')
-    env = os.environ.copy()
-    env['ETCD_ENDPOINTS'] = etcd.get_connection_string()
-    env['ETCD_KEY_FILE'] = ETCD_KEY_PATH
-    env['ETCD_CERT_FILE'] = ETCD_CERT_PATH
-    env['ETCD_CA_CERT_FILE'] = ETCD_CA_PATH
     config = hookenv.config()
     context = {
         'cidr': CALICO_CIDR,
@@ -179,9 +173,9 @@ def configure_calico_pool():
         'nat_outgoing': 'true' if config['nat-outgoing'] else 'false',
     }
     render('pool.yaml', '/tmp/calico-pool.yaml', context)
-    cmd = '/opt/calicoctl/calicoctl apply -f /tmp/calico-pool.yaml'
-    exit_code = call(cmd.split(), env=env)
-    if exit_code != 0:
+    try:
+        calicoctl('apply', '-f', '/tmp/calico-pool.yaml')
+    except CalledProcessError:
         status_set('waiting', 'Waiting to retry calico pool configuration')
         return
     set_state('calico.pool.configured')
@@ -280,13 +274,28 @@ def deploy_network_policy_controller():
 
     for template, context in templates:
         status_set('maintenance', 'Applying ' + template)
+        dest = '/tmp/' + template
+        render(template, dest, context)
         try:
-            kubectl_apply_template(template, context)
+            kubectl('apply', '-f', dest)
         except CalledProcessError:
             msg = 'Waiting to retry applying ' + template
             log(msg)
             status_set('waiting', msg)
             return
+
+    license_key_b64 = hookenv.config('license-key')
+    license_key = b64decode(license_key_b64).decode('utf-8')
+    license_key_path = '/tmp/license-key.yaml'
+    with open(license_key_path, 'w') as f:
+        f.write(license_key)
+    try:
+        calicoctl('apply', '-f', license_key_path)
+    except CalledProcessError:
+        msg = 'Waiting to retry applying license-key'
+        log(msg)
+        status_set('waiting', msg)
+        return
 
     set_state('calico.npc.deployed')
 
@@ -319,17 +328,22 @@ def kubectl(*args):
     return check_output(cmd)
 
 
-def kubectl_apply_template(template, context):
-    dest = '/tmp/' + template
-    render(template, dest, context)
-    kubectl('apply', '-f', dest)
-
-
 def read_file_to_base64(path):
     with open(path, 'rb') as f:
         contents = f.read()
     contents = b64encode(contents).decode('utf-8')
     return contents
+
+
+def calicoctl(*args):
+    etcd = endpoint_from_flag('etcd.available')
+    env = os.environ.copy()
+    env['ETCD_ENDPOINTS'] = etcd.get_connection_string()
+    env['ETCD_KEY_FILE'] = ETCD_KEY_PATH
+    env['ETCD_CERT_FILE'] = ETCD_CERT_PATH
+    env['ETCD_CA_CERT_FILE'] = ETCD_CA_PATH
+    cmd = ['/opt/calicoctl/calicoctl'] + list(args)
+    return check_output(cmd, env=env)
 
 
 def arch():
