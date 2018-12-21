@@ -3,4 +3,4 @@ includes:
   - 'interface:kubernetes-cni'
   - 'layer:docker'
   - 'layer:basic'
-repo: https://github.com/juju-solutions/layer-tigera-ee.git
+repo: https://github.com/juju-solutions/layer-tigera-secure-ee.git
