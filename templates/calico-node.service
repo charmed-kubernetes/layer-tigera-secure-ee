@@ -38,7 +38,7 @@ ExecStart=/usr/bin/docker run --net=host --privileged --name=calico-node \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/log/calico:/var/log/calico \
   -v /opt/calicoctl:/opt/calicoctl \
-  {{ calico_node_image }}
+  quay.io/tigera/cnx-node:v2.2.1
 ExecStop=/usr/bin/docker rm -f calico-node
 Restart=always
 RestartSec=10
