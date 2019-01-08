@@ -145,6 +145,7 @@ def install_calico_service():
         'nodename': gethostname(),
         # specify IP so calico doesn't grab a silly one from, say, lxdbr0
         'ip': get_bind_address(),
+        'registry': hookenv.config('registry')
     })
     set_state('calico.service.installed')
 
@@ -225,6 +226,7 @@ def deploy_network_policy_controller():
 
     etcd = endpoint_from_flag('etcd.available')
     encoded_creds = hookenv.config('registry-credentials')
+    registry = hookenv.config('registry')
     templates = [
         ('cnx-pull-secret.yaml', {
             'credentials': encoded_creds
@@ -234,6 +236,7 @@ def deploy_network_policy_controller():
             'etcd_key_path': ETCD_KEY_PATH,
             'etcd_cert_path': ETCD_CERT_PATH,
             'etcd_ca_path': ETCD_CA_PATH,
+            'registry': registry
         }),
         ('calico-config.yaml', {
             'etcd_endpoints': etcd.get_connection_string()
@@ -249,7 +252,9 @@ def deploy_network_policy_controller():
             'key': read_file_to_base64('/root/cdk/server.key'),
             'cert': read_file_to_base64('/root/cdk/server.crt')
         }),
-        ('cnx-etcd.yaml', {}),
+        ('cnx-etcd.yaml', {
+            'registry': registry
+        }),
         ('cnx-policy.yaml', {})
     ]
 
@@ -271,11 +276,16 @@ def deploy_network_policy_controller():
                 ip = address['ip']
                 apiserver_ips.append(ip)
         templates += [
-            ('elasticsearch-operator.yaml', {}),
-            ('monitor-calico.yaml', {
-                'apiserver_ips': json.dumps(apiserver_ips)
+            ('elasticsearch-operator.yaml', {
+                'registry': registry
             }),
-            ('kibana-dashboards.yaml', {})
+            ('monitor-calico.yaml', {
+                'apiserver_ips': json.dumps(apiserver_ips),
+                'registry': registry
+            }),
+            ('kibana-dashboards.yaml', {
+                'registry': registry
+            })
         ]
 
     for template, context in templates:

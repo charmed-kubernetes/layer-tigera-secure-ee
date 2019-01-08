@@ -221,7 +221,7 @@ metadata:
   namespace: calico-monitoring
 spec:
   version: v0.14.0
-  baseImage: quay.io/prometheus/alertmanager
+  baseImage: {{ registry or 'quay.io' }}/prometheus/alertmanager
   nodeSelector:
     beta.kubernetes.io/os: linux
     # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
@@ -256,7 +256,7 @@ metadata:
   name: calico-node-prometheus
   namespace: calico-monitoring
 spec:
-  baseImage: quay.io/prometheus/prometheus
+  baseImage: {{ registry or 'quay.io' }}/prometheus/prometheus
   nodeSelector:
     beta.kubernetes.io/os: linux
     # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
@@ -314,8 +314,8 @@ spec:
     # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
     #node.role: infrastructure
   kibana:
-    image: docker.elastic.co/kibana/kibana-oss:6.4.1
-  elastic-search-image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.1
+    image: {{ registry or 'docker.elastic.co' }}/kibana/kibana-oss:6.4.1
+  elastic-search-image: {{ registry or 'docker.elastic.co' }}/elasticsearch/elasticsearch-oss:6.4.1
   # For production deployments, modify the number of elasticsearch replicas accordingly
   client-node-replicas: 1
   master-node-replicas: 1
@@ -390,7 +390,7 @@ spec:
       initContainers:
         # The fluentd image runs as user 1000, so make /var/log/calico writable by them
         - name: chown-logs
-          image: busybox
+          image: {{ registry or 'docker.io' }}/busybox
           command: ['sh', '-c', 'chown -R 1000:1000 /var/log/calico']
           securityContext:
             privileged: true
@@ -399,7 +399,7 @@ spec:
               mountPath: /var/log/calico
       containers:
         - name: fluentd
-          image: quay.io/tigera/fluentd:v2.2.1
+          image: {{ registry or 'quay.io' }}/tigera/fluentd:v2.2.1
           env:
             - name: FLOW_LOG_FILE
               value: /var/log/calico/flowlogs/flows.log

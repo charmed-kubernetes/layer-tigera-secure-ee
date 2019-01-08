@@ -234,13 +234,13 @@ spec:
       serviceAccountName: tigera-kibana-job
       initContainers:
       - name: wait-for-endpoints
-        image: docker.io/giantswarm/tiny-tools:0.3.0
+        image: {{ registry or 'docker.io' }}/giantswarm/tiny-tools:0.3.0
         imagePullPolicy: IfNotPresent
         command: ["fish", "-c", "echo \"waiting for endpoints...\"; while true; set endpoints (curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header \"Authorization: Bearer \"(cat /var/run/secrets/kubernetes.io/serviceaccount/token) https://kubernetes.default.svc/api/v1/namespaces/calico-monitoring/endpoints/kibana-tigera-elasticsearch); echo $endpoints | jq \".\"; if test (echo $endpoints | jq -r \".subsets[].addresses | length\") -gt 0; exit 0; end; echo \"waiting...\";sleep 1; end"]
         args: ["monitoring", "kibana"]
       containers:
       - name: kibana-import
-        image: docker.io/giantswarm/tiny-tools:0.3.0
+        image: {{ registry or 'docker.io' }}/giantswarm/tiny-tools:0.3.0
         command: ["/bin/sh", "-c"]
         args:
           - >

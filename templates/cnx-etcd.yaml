@@ -236,7 +236,7 @@ spec:
         - name: cnx-pull-secret
       containers:
       - name: cnx-apiserver
-        image: quay.io/tigera/cnx-apiserver:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-apiserver:v2.2.1
         args:
           - "--secure-port=5443"
           - "--audit-policy-file=/etc/tigera/audit/policy.conf"
@@ -284,7 +284,7 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 10
       - name: cnx-queryserver
-        image: quay.io/tigera/cnx-queryserver:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-queryserver:v2.2.1
         env:
           # Set queryserver logging to "info"
           - name: LOGLEVEL
@@ -389,7 +389,7 @@ spec:
       # cnx-manager-proxy.
       initContainers:
       - name: cnx-manager-init-pem # create /cache/pem for cnx-manager-proxy
-        image: alpine:3.7
+        image: {{ registry or 'docker.io' }}/alpine:3.7
         command: ['sh', '-c', 'cat /etc/cnx-manager-web-tls/cert /etc/cnx-manager-web-tls/key > /cache/pem']
         volumeMounts:
         - mountPath: /cache
@@ -398,7 +398,7 @@ spec:
           name: cnx-manager-tls
       containers:
       - name: cnx-manager
-        image: quay.io/tigera/cnx-manager:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-manager:v2.2.1
         env:
           - name: CNX_WEB_AUTHENTICATION_TYPE
             valueFrom:
@@ -466,7 +466,7 @@ spec:
         - mountPath: /etc/cnx-manager-web-tls
           name: cnx-manager-tls
       - name: cnx-manager-proxy
-        image: quay.io/tigera/cnx-manager-proxy:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-manager-proxy:v2.2.1
         env:
           - name: CNX_WEB_AUTHENTICATION_TYPE
             valueFrom:

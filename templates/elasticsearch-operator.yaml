@@ -1,7 +1,7 @@
 # This manifest includes the following component versions:
-#   quay.io/coreos/prometheus-operator:v0.18.1
-#   quay.io/coreos/prometheus-config-reloader:v0.0.3
-#   quay.io/coreos/configmap-reload:v0.0.1
+#   {{ registry or 'quay.io' }}/coreos/prometheus-operator:v0.18.1
+#   {{ registry or 'quay.io' }}/coreos/prometheus-config-reloader:v0.0.3
+#   {{ registry or 'quay.io' }}/coreos/configmap-reload:v0.0.1
 #   upmcenterprises/elasticsearch-operator:0.2.0
 ---
 
@@ -107,10 +107,10 @@ spec:
       serviceAccountName: calico-prometheus-operator
       containers:
       - name: calico-prometheus-operator
-        image: quay.io/coreos/prometheus-operator:v0.18.1
+        image: {{ registry or 'quay.io' }}/coreos/prometheus-operator:v0.18.1
         args:
-          - --prometheus-config-reloader=quay.io/coreos/prometheus-config-reloader:v0.0.3
-          - --config-reloader-image=quay.io/coreos/configmap-reload:v0.0.1
+          - --prometheus-config-reloader={{ registry or 'quay.io' }}/coreos/prometheus-config-reloader:v0.0.3
+          - --config-reloader-image={{ registry or 'quay.io' }}/coreos/configmap-reload:v0.0.1
         resources:
           requests:
             cpu: 100m
@@ -198,7 +198,7 @@ spec:
         #node.role: infrastructure
       containers:
       - name: operator
-        image: docker.io/upmcenterprises/elasticsearch-operator:0.2.0
+        image: {{ registry or 'docker.io' }}/upmcenterprises/elasticsearch-operator:0.2.0
         imagePullPolicy: Always
         env:
         - name: NAMESPACE
