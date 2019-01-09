@@ -348,6 +348,12 @@ def registry_credentials_changed():
     remove_state('calico.npc.deployed')
 
 
+@when('config.changed.registry')
+def registry_changed():
+    remove_state('calico.service.installed')
+    remove_state('calico.npc.deployed')
+
+
 def kubectl(*args):
     cmd = ['kubectl', '--kubeconfig=/root/.kube/config'] + list(args)
     return check_output(cmd)
