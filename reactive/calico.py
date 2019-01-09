@@ -227,10 +227,14 @@ def deploy_network_policy_controller():
     etcd = endpoint_from_flag('etcd.available')
     encoded_creds = hookenv.config('registry-credentials')
     registry = hookenv.config('registry')
-    templates = [
-        ('cnx-pull-secret.yaml', {
+    templates = []
+
+    if encoded_creds:
+        templates.append(('cnx-pull-secret.yaml', {
             'credentials': encoded_creds
-        }),
+        }))
+
+    templates += [
         ('policy-controller.yaml', {
             'connection_string': etcd.get_connection_string(),
             'etcd_key_path': ETCD_KEY_PATH,
@@ -330,6 +334,11 @@ def ready():
 def registry_credentials_changed():
     status_set('maintenance', 'Applying registry credentials')
     encoded_creds = hookenv.config('registry-credentials')
+
+    if not encoded_creds:
+        hookenv.log('no registry-credentials, skipping docker config')
+        return
+
     creds = b64decode(encoded_creds).decode('utf-8')
     config_dir = '/root/.docker'
     config_path = config_dir + '/config.json'
