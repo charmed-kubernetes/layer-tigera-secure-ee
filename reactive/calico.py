@@ -7,7 +7,7 @@ from subprocess import check_call, check_output, CalledProcessError
 from charms.reactive import when, when_not, when_any, set_state, remove_state
 from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
-from charmhelpers.core import hookenv
+from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
 from charmhelpers.core.hookenv import unit_private_ip
 from charmhelpers.core.host import service, service_start, service_running
@@ -23,6 +23,8 @@ ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
 ETCD_CA_PATH = os.path.join(CALICOCTL_PATH, 'etcd-ca')
 CALICO_CIDR = '192.168.0.0/16'
+
+db = unitdata.kv()
 
 
 @hook('upgrade-charm')
@@ -217,8 +219,8 @@ def configure_master_cni():
     set_state('calico.cni.configured')
 
 
-@when('etcd.available', 'calico.cni.configured',
-      'calico.service.started', 'cni.is-worker')
+@when('etcd.available', 'calico.cni.configured', 'calico.service.started',
+      'cni.is-worker', 'kube-api-endpoint.available')
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
@@ -227,6 +229,7 @@ def deploy_network_policy_controller():
     etcd = endpoint_from_flag('etcd.available')
     encoded_creds = hookenv.config('registry-credentials')
     registry = hookenv.config('registry')
+    apiserver_ips = get_apiserver_ips()
     templates = []
 
     if encoded_creds:
@@ -266,19 +269,6 @@ def deploy_network_policy_controller():
     # elasticsearch-operator requires vm.max_map_count>=262144 on the host
     if hookenv.config('enable-elasticsearch-operator'):
         check_call(['sysctl', 'vm.max_map_count=262144'])
-        try:
-            output = kubectl('get', 'endpoints', 'kubernetes', '-o', 'json')
-        except CalledProcessError:
-            msg = 'Waiting to retry getting apiserver endpoints'
-            log(msg)
-            status_set('waiting', msg)
-            return
-        data = json.loads(output)
-        apiserver_ips = []
-        for subset in data['subsets']:
-            for address in subset['addresses']:
-                ip = address['ip']
-                apiserver_ips.append(ip)
         templates += [
             ('elasticsearch-operator.yaml', {
                 'registry': registry
@@ -317,6 +307,7 @@ def deploy_network_policy_controller():
         status_set('waiting', msg)
         return
 
+    db.set('tigera.apiserver_ips_used', apiserver_ips)
     set_state('calico.npc.deployed')
 
 
@@ -336,7 +327,7 @@ def registry_credentials_changed():
     encoded_creds = hookenv.config('registry-credentials')
 
     if not encoded_creds:
-        hookenv.log('no registry-credentials, skipping docker config')
+        log('no registry-credentials, skipping docker config')
         return
 
     creds = b64decode(encoded_creds).decode('utf-8')
@@ -352,6 +343,25 @@ def registry_credentials_changed():
 def registry_changed():
     remove_state('calico.service.installed')
     remove_state('calico.npc.deployed')
+
+
+@when('calico.npc.deployed', 'kube-api-endpoint.available')
+def watch_for_api_endpoint_changes():
+    apiserver_ips = get_apiserver_ips()
+    old_apiserver_ips = db.get('tigera.apiserver_ips_used')
+    if apiserver_ips != old_apiserver_ips:
+        log('apiserver endpoints changed, preparing to reapply templates')
+        remove_state('calico.npc.deployed')
+
+
+def get_apiserver_ips():
+    kube_api_endpoint = endpoint_from_flag('kube-api-endpoint.available')
+    apiserver_ips = []
+    for api_service in kube_api_endpoint.services():
+        for host in api_service['hosts']:
+            hostname = host['hostname']
+            apiserver_ips.append(hostname)
+    return apiserver_ips
 
 
 def kubectl(*args):

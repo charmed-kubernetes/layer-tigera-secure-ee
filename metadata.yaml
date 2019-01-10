@@ -22,6 +22,8 @@ requires:
   cni:
     interface: kubernetes-cni
     scope: container
+  kube-api-endpoint:
+    interface: http
 resources:
   calico:
     type: file
