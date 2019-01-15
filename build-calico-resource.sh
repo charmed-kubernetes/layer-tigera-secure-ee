@@ -10,6 +10,7 @@ set -eux
 
 # Supported calico architectures
 arches="amd64 arm64"
+calico_cni_version="v3.2.4"
 
 function fetch_and_validate() {
   # fetch a binary and make sure it's what we expect (executable > 20MB)
@@ -50,27 +51,15 @@ for arch in ${arches}; do
   rm -rf resource-build-$arch
   mkdir resource-build-$arch
   pushd resource-build-$arch
+  fetch_and_validate \
+    https://github.com/projectcalico/cni-plugin/releases/download/$calico_cni_version/calico-$arch
+  fetch_and_validate \
+    https://github.com/projectcalico/cni-plugin/releases/download/$calico_cni_version/calico-ipam-$arch
+  mv calico-$arch calico
+  mv calico-ipam-$arch calico-ipam
+  echo "calico cni-plugin $calico_cni_version" > BUILD_INFO
 
-  if [ $arch = "amd64" ]; then
-    fetch_and_validate \
-      https://github.com/projectcalico/calicoctl/releases/download/v1.6.5/calicoctl
-    fetch_and_validate \
-      https://github.com/projectcalico/cni-plugin/releases/download/v1.11.8/calico
-    fetch_and_validate \
-      https://github.com/projectcalico/cni-plugin/releases/download/v1.11.8/calico-ipam
-  elif [ $arch = "arm64" ]; then
-    fetch_and_validate \
-      https://people.canonical.com/~kwmonroe/calico-2.6-arm64/calicoctl
-    fetch_and_validate \
-      https://people.canonical.com/~kwmonroe/calico-2.6-arm64/calico
-    fetch_and_validate \
-      https://people.canonical.com/~kwmonroe/calico-2.6-arm64/calico-ipam
-  else
-    echo "$0: Unsupported architecture: $arch"
-    exit 1
-  fi
-
-  chmod +x calicoctl calico calico-ipam
+  chmod +x calico calico-ipam
   tar -zcvf ../calico-$arch.tar.gz .
 
   popd

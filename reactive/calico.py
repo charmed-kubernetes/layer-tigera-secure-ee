@@ -79,7 +79,6 @@ def install_calico_binaries():
     check_call(cmd)
 
     apps = [
-        {'name': 'calicoctl', 'path': CALICOCTL_PATH},
         {'name': 'calico', 'path': '/opt/cni/bin'},
         {'name': 'calico-ipam', 'path': '/opt/cni/bin'},
     ]
@@ -163,7 +162,8 @@ def start_calico_service():
 
 
 @when('calico.binaries.installed', 'etcd.available',
-      'calico.etcd-credentials.installed')
+      'calico.etcd-credentials.installed',
+      'tigera.registry-credentials.applied')
 @when_not('calico.pool.configured')
 def configure_calico_pool():
     ''' Configure Calico IP pool. '''
@@ -220,7 +220,8 @@ def configure_master_cni():
 
 
 @when('etcd.available', 'calico.cni.configured', 'calico.service.started',
-      'cni.is-worker', 'kube-api-endpoint.available')
+      'cni.is-worker', 'kube-api-endpoint.available',
+      'tigera.registry-credentials.applied')
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
@@ -337,6 +338,7 @@ def registry_credentials_changed():
     with open(config_path, 'w') as f:
         f.write(creds)
     remove_state('calico.npc.deployed')
+    set_state('tigera.registry-credentials.applied')
 
 
 @when('config.changed.registry')
@@ -378,13 +380,20 @@ def read_file_to_base64(path):
 
 def calicoctl(*args):
     etcd = endpoint_from_flag('etcd.available')
-    env = os.environ.copy()
-    env['ETCD_ENDPOINTS'] = etcd.get_connection_string()
-    env['ETCD_KEY_FILE'] = ETCD_KEY_PATH
-    env['ETCD_CERT_FILE'] = ETCD_CERT_PATH
-    env['ETCD_CA_CERT_FILE'] = ETCD_CA_PATH
-    cmd = ['/opt/calicoctl/calicoctl'] + list(args)
-    return check_output(cmd, env=env)
+    registry = hookenv.config('registry') or 'quay.io'
+    image = registry + '/tigera/calicoctl:v2.2.1'
+    cmd = [
+        'docker', 'run',
+        '-v', CALICOCTL_PATH + ':' + CALICOCTL_PATH,
+        '-v', '/tmp:/tmp',
+        '-e', 'ETCD_ENDPOINTS=' + etcd.get_connection_string(),
+        '-e', 'ETCD_KEY_FILE=' + ETCD_KEY_PATH,
+        '-e', 'ETCD_CERT_FILE=' + ETCD_CERT_PATH,
+        '-e', 'ETCD_CA_CERT_FILE=' + ETCD_CA_PATH,
+        image
+    ]
+    cmd += list(args)
+    return check_output(cmd)
 
 
 def arch():
