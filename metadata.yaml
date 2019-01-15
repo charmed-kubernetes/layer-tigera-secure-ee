@@ -1,5 +1,5 @@
-name: calico
-summary: A robust Software Defined Network from Project Calico
+name: tigera-secure-ee
+summary: Tigera Secure Enterprise Edition
 maintainers:
   - Tim Van Steenburgh <tim.van.steenburgh@canonical.com>
   - George Kraft <george.kraft@canonical.com>
@@ -7,8 +7,9 @@ maintainers:
   - Mike Wilson <mike.wilson@canonical.com>
   - Kevin Monroe <kevin.monroe@canonical.com>
 description: |
-  Deploys Calico as a background service and configures CNI for use with
-  calico on any principal charm that implements the kubernetes-cni interface.
+  Deploys Tigera Secure EE as a background service and configures CNI for use
+  with Tigera Secure EE on any principal charm that implements the
+  kubernetes-cni interface.
 tags:
   - networking
 subordinate: true
@@ -21,6 +22,8 @@ requires:
   cni:
     interface: kubernetes-cni
     scope: container
+  kube-api-endpoint:
+    interface: http
 resources:
   calico:
     type: file

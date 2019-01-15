@@ -1,0 +1,259 @@
+#
+# Manifest to auto inject index, visualization and dashboards into Kibana
+#
+# Note: to create the api-kibana-dashboard.json you must use the export API to extract the json
+# For example:  $curl -X GET \
+# 'http://192.168.189.183:5601/api/kibana/dashboards/export?dashboard=a2a864b0-c1c-11e8-b274-fbb68ba254a6&dashboard=c66e42c0-c11c-11e8-b274-fbb68ba254a6' \
+# -H 'kbn-xsrf: true' > api-kibana-dashboard.json
+#
+# One way to figure out the specific dashboard id's is to export the saved objects from Kibana UI and then look at the 'dashboards' id's in the json file.
+#
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: kibana-dashboards
+  namespace: calico-monitoring
+data:
+  kibana-dashboard.json: |
+    {
+      "version": "6.4.1",
+      "objects": [
+        {
+          "id": "b02bbe00-c119-11e8-b274-fbb68ba254a6",
+          "type": "visualization",
+          "updated_at": "2018-10-05T20:15:59.041Z",
+          "version": 2,
+          "attributes": {
+            "title": "Flow Filtering Controls",
+            "visState": "{\"title\":\"Flow Filtering Controls\",\"type\":\"input_control_vis\",\"params\":{\"controls\":[{\"id\":\"1537917368975\",\"indexPattern\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"fieldName\":\"action\",\"parent\":\"\",\"label\":\"Flow action\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":2,\"order\":\"desc\"}},{\"id\":\"1537917488229\",\"indexPattern\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"fieldName\":\"dest_port\",\"parent\":\"\",\"label\":\"Destination port\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":20,\"order\":\"desc\"}},{\"id\":\"1537917510068\",\"indexPattern\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"fieldName\":\"source_namespace\",\"parent\":\"\",\"label\":\"Source namespace\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":20,\"order\":\"desc\"}},{\"id\":\"1537917544020\",\"indexPattern\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"fieldName\":\"dest_namespace\",\"parent\":\"\",\"label\":\"Destination namespace\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":20,\"order\":\"desc\"}},{\"id\":\"1537917574099\",\"indexPattern\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"fieldName\":\"source_name_aggr\",\"parent\":\"\",\"label\":\"Source name\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":20,\"order\":\"desc\"}},{\"id\":\"1537917613690\",\"indexPattern\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"fieldName\":\"dest_name_aggr\",\"parent\":\"\",\"label\":\"Destination name\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":20,\"order\":\"desc\"}}],\"updateFiltersOnChange\":false,\"useTimeFilter\":false,\"pinFilters\":false},\"aggs\":[]}",
+            "uiStateJSON": "{}",
+            "description": "",
+            "version": 1,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"query\":{\"query\":\"\",\"language\":\"lucene\"},\"filter\":[]}"
+            }
+          }
+        },
+        {
+          "id": "f2b70030-c11a-11e8-b274-fbb68ba254a6",
+          "type": "visualization",
+          "updated_at": "2018-10-04T19:56:03.900Z",
+          "version": 1,
+          "attributes": {
+            "title": "Flow Count Allowdeny",
+            "visState": "{\"title\":\"Flow Count Allowdeny\",\"type\":\"metrics\",\"params\":{\"id\":\"61ca57f0-469d-11e7-af02-69e470af7417\",\"type\":\"timeseries\",\"series\":[{\"id\":\"61ca57f1-469d-11e7-af02-69e470af7417\",\"color\":\"#68BC00\",\"split_mode\":\"filter\",\"metrics\":[{\"id\":\"61ca57f2-469d-11e7-af02-69e470af7417\",\"type\":\"sum\",\"field\":\"num_flows\"}],\"separate_axis\":0,\"axis_position\":\"right\",\"formatter\":\"number\",\"chart_type\":\"line\",\"line_width\":1,\"point_size\":1,\"fill\":0.5,\"stacked\":\"none\",\"label\":\"Allowed flows\",\"filter\":\"action=\\\"allow\\\"\"},{\"id\":\"9b63f590-c11a-11e8-bf27-45e0f06d30fe\",\"color\":\"rgba(188,21,0,1)\",\"split_mode\":\"filter\",\"metrics\":[{\"id\":\"9b63f591-c11a-11e8-bf27-45e0f06d30fe\",\"type\":\"count\",\"field\":\"num_flows\"}],\"separate_axis\":0,\"axis_position\":\"right\",\"formatter\":\"number\",\"chart_type\":\"line\",\"line_width\":1,\"point_size\":1,\"fill\":0.5,\"stacked\":\"none\",\"label\":\"Denied flows\",\"filter\":\"action=\\\"deny\\\"\"}],\"time_field\":\"end_time\",\"index_pattern\":\"tigera_secure_ee_flow*\",\"interval\":\"auto\",\"axis_position\":\"left\",\"axis_formatter\":\"number\",\"axis_scale\":\"normal\",\"show_legend\":1,\"show_grid\":1},\"aggs\":[]}",
+            "uiStateJSON": "{}",
+            "description": "",
+            "version": 1,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"query\":{\"query\":\"\",\"language\":\"lucene\"},\"filter\":[]}"
+            }
+          }
+        },
+        {
+          "id": "af013dc0-c8da-11e8-97f7-15a796350190",
+          "type": "search",
+          "updated_at": "2018-10-05T20:10:19.932Z",
+          "version": 1,
+          "attributes": {
+            "title": "flows-search",
+            "description": "",
+            "hits": 0,
+            "columns": [
+              "num_flows",
+              "action",
+              "source_name_aggr",
+              "source_namespace",
+              "dest_name_aggr",
+              "dest_namespace",
+              "dest_port",
+              "reporter"
+            ],
+            "sort": [
+              "end_time",
+              "asc"
+            ],
+            "version": 1,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"index\":\"b74ef5b0-c80f-11e8-97f7-15a796350190\",\"highlightAll\":true,\"version\":true,\"query\":{\"language\":\"lucene\",\"query\":\"\"},\"filter\":[]}"
+            }
+          }
+        },
+        {
+          "id": "b74ef5b0-c80f-11e8-97f7-15a796350190",
+          "type": "index-pattern",
+          "updated_at": "2018-10-05T20:09:22.158Z",
+          "version": 12,
+          "attributes": {
+            "title": "tigera_secure_ee_flows",
+            "timeFieldName": "start_time",
+            "fields": "[{\"name\":\"_id\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":false},{\"name\":\"_index\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":false},{\"name\":\"_score\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":false,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"_source\",\"type\":\"_source\",\"count\":0,\"scripted\":false,\"searchable\":false,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"_type\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":false},{\"name\":\"action\",\"type\":\"string\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"bytes_in\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"bytes_out\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_ip\",\"type\":\"ip\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_labels.labels\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_name\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_name_aggr\",\"type\":\"string\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_namespace\",\"type\":\"string\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_port\",\"type\":\"number\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"dest_type\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"end_time\",\"type\":\"date\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"host\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"host.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"num_flows\",\"type\":\"number\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"num_flows_completed\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"num_flows_started\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"packets_in\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"packets_out\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"policies.all_policies\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"proto\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"reporter\",\"type\":\"string\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_ip\",\"type\":\"ip\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_labels.labels\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_name\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_name_aggr\",\"type\":\"string\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_namespace\",\"type\":\"string\",\"count\":1,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_port\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"source_type\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"start_time\",\"type\":\"date\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true}]"
+          }
+        },
+        {
+          "id": "c66e42c0-c11c-11e8-b274-fbb68ba254a6",
+          "type": "dashboard",
+          "updated_at": "2018-10-05T20:11:27.003Z",
+          "version": 4,
+          "attributes": {
+            "title": "Tigera Secure EE Flow Logs",
+            "hits": 0,
+            "description": "",
+            "panelsJSON": "[{\"embeddableConfig\":{},\"gridData\":{\"x\":25,\"y\":0,\"w\":23,\"h\":15,\"i\":\"1\"},\"id\":\"b02bbe00-c119-11e8-b274-fbb68ba254a6\",\"panelIndex\":\"1\",\"title\":\"Flow Filtering\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"embeddableConfig\":{},\"gridData\":{\"x\":0,\"y\":0,\"w\":25,\"h\":15,\"i\":\"2\"},\"id\":\"f2b70030-c11a-11e8-b274-fbb68ba254a6\",\"panelIndex\":\"2\",\"title\":\"Number of Flows\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"gridData\":{\"x\":0,\"y\":15,\"w\":48,\"h\":19,\"i\":\"4\"},\"version\":\"6.4.1\",\"panelIndex\":\"4\",\"type\":\"search\",\"id\":\"af013dc0-c8da-11e8-97f7-15a796350190\",\"embeddableConfig\":{},\"title\":\"Flow Logs\"}]",
+            "optionsJSON": "{\"darkTheme\":false,\"hidePanelTitles\":false,\"useMargins\":true}",
+            "version": 1,
+            "timeRestore": false,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"query\":{\"language\":\"lucene\",\"query\":\"\"},\"filter\":[]}"
+            }
+          }
+        },
+        {
+          "id": "4de4f080-c11a-11e8-b274-fbb68ba254a6",
+          "type": "visualization",
+          "updated_at": "2018-10-05T20:25:16.148Z",
+          "version": 2,
+          "attributes": {
+            "title": "Audit Filtering Controls",
+            "visState": "{\"title\":\"Audit Filtering Controls\",\"type\":\"input_control_vis\",\"params\":{\"controls\":[{\"id\":\"1537917687952\",\"indexPattern\":\"a40bc210-c118-11e8-b274-fbb68ba254a6\",\"fieldName\":\"objectRef.resource.keyword\",\"parent\":\"\",\"label\":\"Resource kind\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":5,\"order\":\"desc\"}},{\"id\":\"1537917748804\",\"indexPattern\":\"a40bc210-c118-11e8-b274-fbb68ba254a6\",\"fieldName\":\"user.username.keyword\",\"parent\":\"\",\"label\":\"Username\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":5,\"order\":\"desc\"}},{\"id\":\"1537917812546\",\"indexPattern\":\"a40bc210-c118-11e8-b274-fbb68ba254a6\",\"fieldName\":\"responseStatus.code\",\"parent\":\"\",\"label\":\"Response code\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":5,\"order\":\"desc\"}},{\"id\":\"1537917872353\",\"indexPattern\":\"a40bc210-c118-11e8-b274-fbb68ba254a6\",\"fieldName\":\"verb.keyword\",\"parent\":\"\",\"label\":\"Verb\",\"type\":\"list\",\"options\":{\"type\":\"terms\",\"multiselect\":true,\"dynamicOptions\":true,\"size\":5,\"order\":\"desc\"}}],\"updateFiltersOnChange\":false,\"useTimeFilter\":false,\"pinFilters\":false},\"aggs\":[]}",
+            "uiStateJSON": "{}",
+            "description": "",
+            "version": 1,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"query\":{\"query\":\"\",\"language\":\"lucene\"},\"filter\":[]}"
+            }
+          }
+        },
+        {
+          "id": "92b22970-c8dc-11e8-97f7-15a796350190",
+          "type": "search",
+          "updated_at": "2018-10-05T20:23:51.431Z",
+          "version": 1,
+          "attributes": {
+            "title": "audit-search",
+            "description": "",
+            "hits": 0,
+            "columns": [
+              "timestamp",
+              "user.username",
+              "verb",
+              "objectRef.resource",
+              "name",
+              "objectRef.namespace",
+              "responseStatus.code"
+            ],
+            "sort": [
+              "timestamp",
+              "desc"
+            ],
+            "version": 1,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"index\":\"a40bc210-c118-11e8-b274-fbb68ba254a6\",\"highlightAll\":true,\"version\":true,\"query\":{\"language\":\"lucene\",\"query\":\"\"},\"filter\":[]}"
+            }
+          }
+        },
+        {
+          "id": "a40bc210-c118-11e8-b274-fbb68ba254a6",
+          "type": "index-pattern",
+          "updated_at": "2018-10-05T20:22:18.372Z",
+          "version": 23,
+          "attributes": {
+            "title": "tigera_secure_ee_audit*",
+            "fields": "[{\"name\":\"_id\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":false},{\"name\":\"_index\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":false},{\"name\":\"_score\",\"type\":\"number\",\"count\":0,\"scripted\":false,\"searchable\":false,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"_source\",\"type\":\"_source\",\"count\":0,\"scripted\":false,\"searchable\":false,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"_type\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":false},{\"name\":\"annotations.authorization.k8s.io/decision\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"annotations.authorization.k8s.io/decision.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"annotations.authorization.k8s.io/reason\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"annotations.authorization.k8s.io/reason.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"apiVersion\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"apiVersion.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"auditID\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"auditID.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"kind\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"kind.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"level\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"level.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"metadata.creationTimestamp\",\"type\":\"date\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"name\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"name.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.apiGroup\",\"type\":\"string\",\"count\":4,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.apiGroup.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.apiVersion\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.apiVersion.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.name\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.name.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.namespace\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.namespace.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.resource\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.resource.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.resourceVersion\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.resourceVersion.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.subresource\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.subresource.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"objectRef.uid\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"objectRef.uid.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"requestReceivedTimestamp\",\"type\":\"date\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"requestURI\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"requestURI.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"responseStatus.code\",\"type\":\"number\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"responseStatus.reason\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"responseStatus.reason.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"responseStatus.status\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"responseStatus.status.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"sourceIPs\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"sourceIPs.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"stage\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"stage.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"stageTimestamp\",\"type\":\"date\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"timestamp\",\"type\":\"date\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"user.groups\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"user.groups.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"user.uid\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"user.uid.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"user.username\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"user.username.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true},{\"name\":\"verb\",\"type\":\"string\",\"count\":2,\"scripted\":false,\"searchable\":true,\"aggregatable\":false,\"readFromDocValues\":false},{\"name\":\"verb.keyword\",\"type\":\"string\",\"count\":0,\"scripted\":false,\"searchable\":true,\"aggregatable\":true,\"readFromDocValues\":true}]"
+          }
+        },
+        {
+          "id": "a2a864b0-c11c-11e8-b274-fbb68ba254a6",
+          "type": "dashboard",
+          "updated_at": "2018-10-05T20:25:25.923Z",
+          "version": 4,
+          "attributes": {
+            "title": "Tigera Secure EE Audit Logs",
+            "hits": 0,
+            "description": "",
+            "panelsJSON": "[{\"embeddableConfig\":{},\"gridData\":{\"h\":9,\"i\":\"1\",\"w\":48,\"x\":0,\"y\":0},\"id\":\"4de4f080-c11a-11e8-b274-fbb68ba254a6\",\"panelIndex\":\"1\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"embeddableConfig\":{},\"gridData\":{\"h\":21,\"i\":\"2\",\"w\":48,\"x\":0,\"y\":9},\"id\":\"92b22970-c8dc-11e8-97f7-15a796350190\",\"panelIndex\":\"2\",\"type\":\"search\",\"version\":\"6.4.1\"}]",
+            "optionsJSON": "{\"darkTheme\":false,\"hidePanelTitles\":false,\"useMargins\":true}",
+            "version": 1,
+            "timeRestore": false,
+            "kibanaSavedObjectMeta": {
+              "searchSourceJSON": "{\"query\":{\"language\":\"lucene\",\"query\":\"\"},\"filter\":[]}"
+            }
+          }
+        }
+      ]
+    }
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tigera-kibana-job
+  namespace: calico-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: tigera-kibana-job
+rules:
+- apiGroups: [""]
+  resources:
+  - endpoints
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: tigera-kibana-job
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tigera-kibana-job
+subjects:
+- kind: ServiceAccount
+  name: tigera-kibana-job
+  namespace: calico-monitoring
+---
+# This batch job waits until Kibana is running,
+# then configures it's datasources and dashboards using the info defined in the
+# above configmap.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kibana-import
+  namespace: calico-monitoring
+  labels:
+    app: kibana-import
+    component: import-dashboards
+spec:
+  template:
+    metadata:
+      name: kibana-import
+      labels:
+        app: kibana-import
+    spec:
+      serviceAccountName: tigera-kibana-job
+      initContainers:
+      - name: wait-for-endpoints
+        image: {{ registry or 'docker.io' }}/giantswarm/tiny-tools:0.3.0
+        imagePullPolicy: IfNotPresent
+        command: ["fish", "-c", "echo \"waiting for endpoints...\"; while true; set endpoints (curl -s --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt --header \"Authorization: Bearer \"(cat /var/run/secrets/kubernetes.io/serviceaccount/token) https://kubernetes.default.svc/api/v1/namespaces/calico-monitoring/endpoints/kibana-tigera-elasticsearch); echo $endpoints | jq \".\"; if test (echo $endpoints | jq -r \".subsets[].addresses | length\") -gt 0; exit 0; end; echo \"waiting...\";sleep 1; end"]
+        args: ["monitoring", "kibana"]
+      containers:
+      - name: kibana-import
+        image: {{ registry or 'docker.io' }}/giantswarm/tiny-tools:0.3.0
+        command: ["/bin/sh", "-c"]
+        args:
+          - >
+            curl -v \
+              http://kibana-tigera-elasticsearch/api/kibana/dashboards/import \
+              --header "Content-Type: application/json" \
+              --header 'kbn-xsrf: true' \
+              --data-binary "@/opt/dashboards/kibana-dashboard.json" 
+        volumeMounts:
+        - name: kibana-dashboards
+          mountPath: /opt/dashboards
+      restartPolicy: OnFailure
+      volumes:
+      - name: kibana-dashboards
+        configMap:
+          name: kibana-dashboards

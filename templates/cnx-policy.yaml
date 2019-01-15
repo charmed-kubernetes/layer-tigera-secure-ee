@@ -1,0 +1,60 @@
+# This file contains Tigera Secure EE tiered security policy to control connectivity to Tigera Secure EE Manager and Tigera Secure EE API Server.
+# See the documentation for a full reference on tiered security policy.
+
+# Tier containing policies to allow access to Tigera Secure EE.
+apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: allow-cnx
+spec:
+  order: 100
+
+---
+
+# Allow users to access Tigera Secure EE Manager.
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-cnx.cnx-manager-access
+  namespace: kube-system
+spec:
+  order: 1
+  tier: allow-cnx
+  selector: k8s-app == 'cnx-manager'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    protocol: TCP
+    source:
+      # This policy allows access to Tigera Secure EE Manager from anywhere: narrow it down if
+      # only certain subnets should be allowed.
+      nets: ["0.0.0.0/0"]
+    destination:
+      # By default, Tigera Secure EE Manager is accessed over https. Update this if needed.
+      ports: [9443]
+
+---
+
+# Allow the Kubernetes API Server access to Tigera Secure EE API Server.
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: allow-cnx.cnx-apiserver-access
+  namespace: kube-system
+spec:
+  order: 1
+  tier: allow-cnx
+  selector: k8s-app == 'cnx-apiserver'
+  types:
+  - Ingress
+  ingress:
+  - action: Allow
+    protocol: TCP
+    source:
+      # This policy allows Tigera Secure EE API Server access from anywhere: replace it with
+      # the addresses of your Kubernetes API Servers if those are static.
+      nets: ["0.0.0.0/0"]
+    destination:
+      # The ports Tigera Secure EE API Server and Tigera Secure EE Query Server are configured to listen on.
+      ports: [443, 5443, 8080, 10443]

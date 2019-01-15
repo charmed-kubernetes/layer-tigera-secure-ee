@@ -1,0 +1,224 @@
+# This manifest includes the following component versions:
+#   {{ registry or 'quay.io' }}/coreos/prometheus-operator:v0.18.1
+#   {{ registry or 'quay.io' }}/coreos/prometheus-config-reloader:v0.0.3
+#   {{ registry or 'quay.io' }}/coreos/configmap-reload:v0.0.1
+#   upmcenterprises/elasticsearch-operator:0.2.0
+---
+
+# This manifest creates a namespace for deploying prometheus-operator,
+# Prometheus and alertmanager.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: calico-monitoring
+---
+kind: NetworkPolicy
+apiVersion: extensions/v1beta1
+metadata:
+  name: default-deny
+  namespace: calico-monitoring
+spec:
+  podSelector:
+    matchLabels: {}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: calico-prometheus-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: calico-prometheus-operator
+subjects:
+- kind: ServiceAccount
+  name: calico-prometheus-operator
+  namespace: calico-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: calico-prometheus-operator
+  namespace: calico-monitoring
+rules:
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - "*"
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - alertmanagers
+  - prometheuses
+  - servicemonitors
+  verbs:
+  - "*"
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs: ["*"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  - secrets
+  verbs: ["*"]
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["list", "delete"]
+- apiGroups: [""]
+  resources:
+  - services
+  - endpoints
+  verbs: ["get", "create", "update"]
+- apiGroups: [""]
+  resources:
+  - nodes
+  verbs: ["list", "watch"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: calico-prometheus-operator
+  namespace: calico-monitoring
+---
+
+# This manifest deploys the Tigera Secure EE Prometheus Operator.
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: calico-prometheus-operator
+  namespace: calico-monitoring
+  labels:
+    operator: prometheus
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        operator: prometheus
+    spec:
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+        # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
+        #node.role: infrastructure
+      serviceAccountName: calico-prometheus-operator
+      containers:
+      - name: calico-prometheus-operator
+        image: {{ registry or 'quay.io' }}/coreos/prometheus-operator:v0.18.1
+        args:
+          - --prometheus-config-reloader={{ registry or 'quay.io' }}/coreos/prometheus-config-reloader:v0.0.3
+          - --config-reloader-image={{ registry or 'quay.io' }}/coreos/configmap-reload:v0.0.1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 50Mi
+          limits:
+            cpu: 200m
+            memory: 100Mi
+---
+
+# Service account for the elasticsearch cluster
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elasticsearch-operator
+  namespace: calico-monitoring
+
+---
+
+# Permissions for the elasticsearch operator
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: elasticsearch-operator
+rules:
+- apiGroups: ["extensions"]
+  resources: ["deployments", "replicasets", "daemonsets"]
+  verbs: ["create", "get", "update", "delete", "list"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["create", "get", "update", "delete", "list"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "create", "delete", "deletecollection"]
+- apiGroups: [""]
+  resources: ["persistentvolumes", "persistentvolumeclaims", "services", "secrets", "configmaps"]
+  verbs: ["create", "get", "update", "delete", "list"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["create", "get", "deletecollection", "delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list", "get", "watch"]
+- apiGroups: ["apps"]
+  resources: ["statefulsets", "deployments"]
+  verbs: ["*"]
+- apiGroups: ["enterprises.upmc.com"]
+  resources: ["elasticsearchclusters"]
+  verbs: ["*"]
+
+---
+
+# Assign the elasticsearch operator role to the serviceaccount
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: elasticsearch-operator
+  namespace: calico-monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: elasticsearch-operator
+subjects:
+- kind: ServiceAccount
+  name: elasticsearch-operator
+  namespace: calico-monitoring
+
+---
+
+# Elasticsearch operator
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: elasticsearch-operator
+  namespace: calico-monitoring
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: elasticsearch-operator
+    spec:
+      nodeSelector:
+        beta.kubernetes.io/os: linux
+        # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
+        #node.role: infrastructure
+      containers:
+      - name: operator
+        image: {{ registry or 'docker.io' }}/upmcenterprises/elasticsearch-operator:0.2.0
+        imagePullPolicy: Always
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+        - containerPort: 8000
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /live
+            port: 8000
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+      serviceAccount: elasticsearch-operator
+

@@ -1,6 +1,7 @@
 includes:
   - 'interface:etcd'
   - 'interface:kubernetes-cni'
+  - 'interface:http'
   - 'layer:docker'
   - 'layer:basic'
-repo: https://github.com/juju-solutions/layer-calico.git
+repo: https://github.com/juju-solutions/layer-tigera-secure-ee.git

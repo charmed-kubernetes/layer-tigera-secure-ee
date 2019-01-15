@@ -1,22 +1,40 @@
 options:
-  calico-node-image:
-    type: string
-    # Please refer to layer-canal/versioning.md before changing the version below.
-    default: quay.io/calico/node:v2.6.12
-    description: |
-      The image id to use for calico/node.
-  calico-policy-image:
-    type: string
-    default: quay.io/calico/kube-controllers:v1.0.5
-    description: |
-      The image id to use for calico/kube-controllers.
   ipip:
-    type: boolean
-    default: false
+    type: string
+    default: Never
     description: |
-      Enable IP tunneling
+      IPIP mode. Must be one of "Always", "CrossSubnet", or "Never".
   nat-outgoing:
     type: boolean
     default: true
     description: |
       NAT outgoing traffic
+  registry:
+    type: string
+    default: ""
+    description: |
+      Registry to use for images. If unspecified, defaults will be used:
+      docker.io, quay.io, docker.elastic.co
+  registry-credentials:
+    type: string
+    default: ""
+    description: |
+      Private docker registry credentials, in the form of a base64-encoded
+      docker config.json file. Example:
+
+      juju config tigera-secure-ee registry-credentials=$(base64 -w0 config.json)
+  license-key:
+    type: string
+    default: ""
+    description: |
+      Tigera EE license key, base64-encoded. Example:
+
+      juju config tigera-secure-ee license-key=$(base64 -w0 license.yaml)
+  enable-elasticsearch-operator:
+    type: boolean
+    default: true
+    description: |
+      Enable deployment of elasticsearch-operator into Kubernetes. This
+      provides a monitoring and metrics solution for use with Tigera EE that
+      is suitable for proof-of-concept purposes, but is not recommended for
+      production use.

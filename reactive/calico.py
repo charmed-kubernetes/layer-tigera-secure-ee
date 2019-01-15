@@ -1,11 +1,13 @@
+import json
 import os
+from base64 import b64decode, b64encode
 from socket import gethostname
-from subprocess import call, check_call, check_output, CalledProcessError
+from subprocess import check_call, check_output, CalledProcessError
 
 from charms.reactive import when, when_not, when_any, set_state, remove_state
 from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
-from charmhelpers.core import hookenv
+from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
 from charmhelpers.core.hookenv import unit_private_ip
 from charmhelpers.core.host import service, service_start, service_running
@@ -21,6 +23,8 @@ ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
 ETCD_CA_PATH = os.path.join(CALICOCTL_PATH, 'etcd-ca')
 CALICO_CIDR = '192.168.0.0/16'
+
+db = unitdata.kv()
 
 
 @hook('upgrade-charm')
@@ -143,7 +147,7 @@ def install_calico_service():
         'nodename': gethostname(),
         # specify IP so calico doesn't grab a silly one from, say, lxdbr0
         'ip': get_bind_address(),
-        'calico_node_image': hookenv.config('calico-node-image')
+        'registry': hookenv.config('registry')
     })
     set_state('calico.service.installed')
 
@@ -164,22 +168,16 @@ def start_calico_service():
 def configure_calico_pool():
     ''' Configure Calico IP pool. '''
     status_set('maintenance', 'Configuring Calico IP pool')
-    etcd = endpoint_from_flag('etcd.available')
-    env = os.environ.copy()
-    env['ETCD_ENDPOINTS'] = etcd.get_connection_string()
-    env['ETCD_KEY_FILE'] = ETCD_KEY_PATH
-    env['ETCD_CERT_FILE'] = ETCD_CERT_PATH
-    env['ETCD_CA_CERT_FILE'] = ETCD_CA_PATH
     config = hookenv.config()
     context = {
         'cidr': CALICO_CIDR,
-        'ipip': 'true' if config['ipip'] else 'false',
+        'ipip': config['ipip'],
         'nat_outgoing': 'true' if config['nat-outgoing'] else 'false',
     }
     render('pool.yaml', '/tmp/calico-pool.yaml', context)
-    cmd = '/opt/calicoctl/calicoctl apply -f /tmp/calico-pool.yaml'
-    exit_code = call(cmd.split(), env=env)
-    if exit_code != 0:
+    try:
+        calicoctl('apply', '-f', '/tmp/calico-pool.yaml')
+    except CalledProcessError:
         status_set('waiting', 'Waiting to retry calico pool configuration')
         return
     set_state('calico.pool.configured')
@@ -221,32 +219,96 @@ def configure_master_cni():
     set_state('calico.cni.configured')
 
 
-@when('etcd.available', 'calico.cni.configured',
-      'calico.service.started', 'cni.is-worker')
+@when('etcd.available', 'calico.cni.configured', 'calico.service.started',
+      'cni.is-worker', 'kube-api-endpoint.available')
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
-    status_set('maintenance', 'Deploying network policy controller.')
+    status_set('maintenance', 'Applying registry credentials secret')
+
     etcd = endpoint_from_flag('etcd.available')
-    context = {
-        'connection_string': etcd.get_connection_string(),
-        'etcd_key_path': ETCD_KEY_PATH,
-        'etcd_cert_path': ETCD_CERT_PATH,
-        'etcd_ca_path': ETCD_CA_PATH,
-        'calico_policy_image': hookenv.config('calico-policy-image')
-    }
-    render('policy-controller.yaml', '/tmp/policy-controller.yaml', context)
-    cmd = ['kubectl',
-           '--kubeconfig=/root/.kube/config',
-           'apply',
-           '-f',
-           '/tmp/policy-controller.yaml']
+    encoded_creds = hookenv.config('registry-credentials')
+    registry = hookenv.config('registry')
+    apiserver_ips = get_apiserver_ips()
+    templates = []
+
+    if encoded_creds:
+        templates.append(('cnx-pull-secret.yaml', {
+            'credentials': encoded_creds
+        }))
+
+    templates += [
+        ('policy-controller.yaml', {
+            'connection_string': etcd.get_connection_string(),
+            'etcd_key_path': ETCD_KEY_PATH,
+            'etcd_cert_path': ETCD_CERT_PATH,
+            'etcd_ca_path': ETCD_CA_PATH,
+            'registry': registry
+        }),
+        ('calico-config.yaml', {
+            'etcd_endpoints': etcd.get_connection_string()
+        }),
+        ('calico-etcd-secrets.yaml', {
+            'etcd_key': read_file_to_base64(ETCD_KEY_PATH),
+            'etcd_cert': read_file_to_base64(ETCD_CERT_PATH),
+            'etcd_ca': read_file_to_base64(ETCD_CA_PATH)
+        }),
+        ('cnx-manager-tls-secret.yaml', {
+            # FIXME: We're just stealing a server key and cert from a random
+            # worker. What should really go here?
+            'key': read_file_to_base64('/root/cdk/server.key'),
+            'cert': read_file_to_base64('/root/cdk/server.crt')
+        }),
+        ('cnx-etcd.yaml', {
+            'registry': registry
+        }),
+        ('cnx-policy.yaml', {})
+    ]
+
+    # elasticsearch-operator junk
+    # elasticsearch-operator requires vm.max_map_count>=262144 on the host
+    if hookenv.config('enable-elasticsearch-operator'):
+        check_call(['sysctl', 'vm.max_map_count=262144'])
+        templates += [
+            ('elasticsearch-operator.yaml', {
+                'registry': registry
+            }),
+            ('monitor-calico.yaml', {
+                'apiserver_ips': json.dumps(apiserver_ips),
+                'registry': registry
+            }),
+            ('kibana-dashboards.yaml', {
+                'registry': registry
+            })
+        ]
+
+    for template, context in templates:
+        status_set('maintenance', 'Applying ' + template)
+        dest = '/tmp/' + template
+        render(template, dest, context)
+        try:
+            kubectl('apply', '-f', dest)
+        except CalledProcessError:
+            msg = 'Waiting to retry applying ' + template
+            log(msg)
+            status_set('waiting', msg)
+            return
+
+    license_key_b64 = hookenv.config('license-key')
+    license_key = b64decode(license_key_b64).decode('utf-8')
+    license_key_path = '/tmp/license-key.yaml'
+    with open(license_key_path, 'w') as f:
+        f.write(license_key)
     try:
-        check_call(cmd)
-        set_state('calico.npc.deployed')
-    except CalledProcessError as e:
-        status_set('waiting', 'Waiting for kubernetes')
-        log(str(e))
+        calicoctl('apply', '-f', license_key_path)
+    except CalledProcessError:
+        msg = 'Waiting to retry applying license-key'
+        log(msg)
+        status_set('waiting', msg)
+        return
+
+    db.set('tigera.apiserver_ips_used', apiserver_ips)
+    set_state('calico.npc.deployed')
 
 
 @when('calico.service.started', 'calico.pool.configured',
@@ -257,6 +319,72 @@ def ready():
         status_set('waiting', 'Waiting for service: calico-node')
     else:
         status_set('active', 'Calico is active')
+
+
+@when('config.changed.registry-credentials')
+def registry_credentials_changed():
+    status_set('maintenance', 'Applying registry credentials')
+    encoded_creds = hookenv.config('registry-credentials')
+
+    if not encoded_creds:
+        log('no registry-credentials, skipping docker config')
+        return
+
+    creds = b64decode(encoded_creds).decode('utf-8')
+    config_dir = '/root/.docker'
+    config_path = config_dir + '/config.json'
+    os.makedirs(config_dir, exist_ok=True)
+    with open(config_path, 'w') as f:
+        f.write(creds)
+    remove_state('calico.npc.deployed')
+
+
+@when('config.changed.registry')
+def registry_changed():
+    remove_state('calico.service.installed')
+    remove_state('calico.npc.deployed')
+
+
+@when('calico.npc.deployed', 'kube-api-endpoint.available')
+def watch_for_api_endpoint_changes():
+    apiserver_ips = get_apiserver_ips()
+    old_apiserver_ips = db.get('tigera.apiserver_ips_used')
+    if apiserver_ips != old_apiserver_ips:
+        log('apiserver endpoints changed, preparing to reapply templates')
+        remove_state('calico.npc.deployed')
+
+
+def get_apiserver_ips():
+    kube_api_endpoint = endpoint_from_flag('kube-api-endpoint.available')
+    apiserver_ips = []
+    for api_service in kube_api_endpoint.services():
+        for host in api_service['hosts']:
+            hostname = host['hostname']
+            apiserver_ips.append(hostname)
+    return apiserver_ips
+
+
+def kubectl(*args):
+    cmd = ['kubectl', '--kubeconfig=/root/.kube/config'] + list(args)
+    return check_output(cmd)
+
+
+def read_file_to_base64(path):
+    with open(path, 'rb') as f:
+        contents = f.read()
+    contents = b64encode(contents).decode('utf-8')
+    return contents
+
+
+def calicoctl(*args):
+    etcd = endpoint_from_flag('etcd.available')
+    env = os.environ.copy()
+    env['ETCD_ENDPOINTS'] = etcd.get_connection_string()
+    env['ETCD_KEY_FILE'] = ETCD_KEY_PATH
+    env['ETCD_CERT_FILE'] = ETCD_CERT_PATH
+    env['ETCD_CA_CERT_FILE'] = ETCD_CA_PATH
+    cmd = ['/opt/calicoctl/calicoctl'] + list(args)
+    return check_output(cmd, env=env)
 
 
 def arch():
