@@ -151,7 +151,7 @@ def install_calico_service():
     set_state('calico.service.installed')
 
 
-@when('calico.service.installed', 'docker.available')
+@when('calico.service.installed')
 @when_not('calico.service.started')
 def start_calico_service():
     ''' Start the calico systemd service. '''
@@ -162,8 +162,7 @@ def start_calico_service():
 
 
 @when('calico.binaries.installed', 'etcd.available',
-      'calico.etcd-credentials.installed',
-      'tigera.registry-credentials.applied')
+      'calico.etcd-credentials.installed')
 @when_not('calico.pool.configured')
 def configure_calico_pool():
     ''' Configure Calico IP pool. '''
@@ -220,8 +219,7 @@ def configure_master_cni():
 
 
 @when('etcd.available', 'calico.cni.configured', 'calico.service.started',
-      'cni.is-worker', 'kube-api-endpoint.available',
-      'tigera.registry-credentials.applied')
+      'cni.is-worker', 'kube-api-endpoint.available')
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
@@ -302,7 +300,8 @@ def deploy_network_policy_controller():
         f.write(license_key)
     try:
         calicoctl('apply', '-f', license_key_path)
-    except CalledProcessError:
+    except CalledProcessError as e:
+        log(e.output)
         msg = 'Waiting to retry applying license-key'
         log(msg)
         status_set('waiting', msg)
@@ -338,7 +337,6 @@ def registry_credentials_changed():
     with open(config_path, 'w') as f:
         f.write(creds)
     remove_state('calico.npc.deployed')
-    set_state('tigera.registry-credentials.applied')
 
 
 @when('config.changed.registry')
