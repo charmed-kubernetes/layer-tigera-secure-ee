@@ -331,11 +331,13 @@ def registry_credentials_changed():
         return
 
     creds = b64decode(encoded_creds).decode('utf-8')
-    config_dir = '/root/.docker'
-    config_path = config_dir + '/config.json'
-    os.makedirs(config_dir, exist_ok=True)
-    with open(config_path, 'w') as f:
-        f.write(creds)
+    creds = json.loads(creds)
+    for server_name, server in creds['auths'].items():
+        auth = server['auth']
+        username, password = b64decode(auth).decode('utf-8').split(':')
+        cmd = ['docker', 'login', server_name, '-u', username, '-p', password]
+        check_call(cmd)
+
     remove_state('calico.npc.deployed')
 
 
