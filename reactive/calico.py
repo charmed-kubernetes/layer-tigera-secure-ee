@@ -237,13 +237,6 @@ def deploy_network_policy_controller():
         }))
 
     templates += [
-        ('policy-controller.yaml', {
-            'connection_string': etcd.get_connection_string(),
-            'etcd_key_path': ETCD_KEY_PATH,
-            'etcd_cert_path': ETCD_CERT_PATH,
-            'etcd_ca_path': ETCD_CA_PATH,
-            'registry': registry
-        }),
         ('calico-config.yaml', {
             'etcd_endpoints': etcd.get_connection_string()
         }),
@@ -251,6 +244,9 @@ def deploy_network_policy_controller():
             'etcd_key': read_file_to_base64(ETCD_KEY_PATH),
             'etcd_cert': read_file_to_base64(ETCD_CERT_PATH),
             'etcd_ca': read_file_to_base64(ETCD_CA_PATH)
+        }),
+        ('calico-kube-controllers.yaml', {
+            'registry': registry
         }),
         ('cnx-manager-tls-secret.yaml', {
             # FIXME: We're just stealing a server key and cert from a random
