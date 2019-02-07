@@ -60,7 +60,7 @@ for arch in ${arches}; do
   echo "calico cni-plugin $calico_cni_version" > BUILD_INFO
 
   chmod +x calico calico-ipam
-  tar -zcvf ../calico-$arch.tar.gz .
+  tar -zcvf ../calico-cni-$arch.tar.gz .
 
   popd
   rm -rf resource-build-$arch
