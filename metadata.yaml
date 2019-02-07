@@ -25,11 +25,11 @@ requires:
   kube-api-endpoint:
     interface: http
 resources:
-  calico:
+  calico-cni:
     type: file
-    filename: calico.tar.gz
-    description: 'Calico resource tarball for amd64'
-  calico-arm64:
+    filename: calico-cni.tar.gz
+    description: 'calico-cni resource tarball for amd64'
+  calico-cni-arm64:
     type: file
-    filename: calico.tar.gz
-    description: 'Calico resource tarball for arm64'
+    filename: calico-cni.tar.gz
+    description: 'Calico-cni resource tarball for arm64'

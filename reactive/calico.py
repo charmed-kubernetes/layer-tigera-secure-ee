@@ -44,9 +44,9 @@ def install_calico_binaries():
     # on intel, the resource is called 'calico'; other arches have a suffix
     architecture = arch()
     if architecture == "amd64":
-        resource_name = 'calico'
+        resource_name = 'calico-cni'
     else:
-        resource_name = 'calico-{}'.format(architecture)
+        resource_name = 'calico-cni-{}'.format(architecture)
 
     try:
         archive = resource_get(resource_name)
