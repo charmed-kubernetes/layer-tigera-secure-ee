@@ -225,6 +225,16 @@ def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
     status_set('maintenance', 'Applying registry credentials secret')
 
+    # FIXME: We're just stealing a server key and cert from a random
+    # worker. What should really go here?
+    key_path = '/root/cdk/server.key'
+    cert_path = '/root/cdk/server.crt'
+    if not os.path.exists(key_path) or not os.path.exists(cert_path):
+        msg = 'Waiting for cert generation'
+        log(msg)
+        hookenv.status_set('waiting', msg)
+        return
+
     etcd = endpoint_from_flag('etcd.available')
     encoded_creds = hookenv.config('registry-credentials')
     registry = hookenv.config('registry')
@@ -249,10 +259,8 @@ def deploy_network_policy_controller():
             'registry': registry
         }),
         ('cnx-manager-tls-secret.yaml', {
-            # FIXME: We're just stealing a server key and cert from a random
-            # worker. What should really go here?
-            'key': read_file_to_base64('/root/cdk/server.key'),
-            'cert': read_file_to_base64('/root/cdk/server.crt')
+            'key': read_file_to_base64(key_path),
+            'cert': read_file_to_base64(cert_path)
         }),
         ('cnx-etcd.yaml', {
             'registry': registry
