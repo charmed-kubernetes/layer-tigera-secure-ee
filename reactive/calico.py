@@ -279,9 +279,6 @@ def deploy_network_policy_controller():
             ('monitor-calico.yaml', {
                 'apiserver_ips': json.dumps(apiserver_ips),
                 'registry': registry
-            }),
-            ('kibana-dashboards.yaml', {
-                'registry': registry
             })
         ]
 
@@ -384,7 +381,7 @@ def read_file_to_base64(path):
 def calicoctl(*args):
     etcd = endpoint_from_flag('etcd.available')
     registry = hookenv.config('registry') or 'quay.io'
-    image = registry + '/tigera/calicoctl:v2.2.1'
+    image = registry + '/tigera/calicoctl:v2.3.0'
     cmd = [
         'docker', 'run',
         '-v', CALICOCTL_PATH + ':' + CALICOCTL_PATH,

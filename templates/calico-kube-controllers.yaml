@@ -37,7 +37,7 @@ spec:
         - name: cnx-pull-secret
       containers:
         - name: calico-kube-controllers
-          image: {{ registry or "quay.io" }}/tigera/kube-controllers:v2.2.1
+          image: {{ registry or "quay.io" }}/tigera/kube-controllers:v2.3.0
           env:
             # The location of the Tigera Secure EE etcd cluster.
             - name: ETCD_ENDPOINTS

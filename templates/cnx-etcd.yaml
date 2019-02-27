@@ -43,7 +43,10 @@ data:
   tigera.cnx-manager.error-tracking: "false"
   # Enable ALP support in the UI
   tigera.cnx-manager.alp-support: "false"
-
+  # The name of the cluster.  This field is used as part of the index name of Elasticsearch logs, and is intended
+  # to allow multiple clusters to share one Elasticsearch cluster.  The value of this field must match that of 
+  # ELASTIC_INDEX_SUFFIX in tigera-fluentd-node.
+  tigera.cnx-manager.cluster-name: "cluster"
 ---
 
 # Optionally update this ConfigMap to enable TLS with certificate verification when Tigera Secure EE API
@@ -61,7 +64,6 @@ data:
   # should be base64 encoded strings of the entire contents of each file.
   #apiserver.key:
   #apiserver.crt:
-
 ---
 
 # Optionally update this Service to change how Tigera Secure EE Manager is accessed.
@@ -104,6 +106,56 @@ spec:
   # to enable TLS certificate verification.
   insecureSkipTLSVerify: true
   #caBundle:
+
+---
+
+# This ClusterRole is used to control the RBAC mechanism for Calico tiered policy.
+# -  If the resources are set to ["networkpolicies","globalnetworkpolicies"], then RBAC for Calico policy has per-tier
+#    granularity defined using the "tier.networkpolicies" and "tier.globalnetworkpolicies" pseudo-resource types.
+#    This is the default as of v2.3.
+# -  If the resources are set to ["tier.networkpolicies","tier.globalnetworkpolicies"], this ensures RBAC for Calico
+#    policy is the v2.2 (and earlier) format, where Calico policy RBAC is identical across all tiers that the user can
+#    access (i.e. has 'get' access for).
+#
+# Never include both networkpolicies and tier.networkpolicies and/or globalnetworkpolicies and
+# tier.globalnetworkpolicies in the resources list for this ClusterRole since that will grant all users full access to
+# Calico policy.
+#
+# If you are upgrading from CNX v2.2 or earlier:
+# - to maintain v2.2 RBAC behavior for tiered Calico policy, modify the resources line below to read:
+#        resources: ["tier.networkpolicies","tier.globalnetworkpolicies"]
+# - to start using per-tier RBAC for Calico policy resources, prior to upgrading update any Role and ClusterRole
+#   resources for your users that reference the projectcalico.org policy resource types networkpolicies or
+#   globalnetworkpolicies to also include tier.networkpolicies and tier.globalnetworkpolicies respectively.
+#   For example, the resources ["networkpolicies"] would be replaced with ["networkpolicies", "tier.networkpolicies"].
+#   Once the upgrade is complete, the Role and ClusterRole definitions can be further updated to provide per-tier
+#   granularity of Calico policy RBAC. Refer to the Tigera documentation for details.
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: ee-calico-tiered-policy-passthru
+rules:
+- apiGroups: ["projectcalico.org"]
+  resources: ["networkpolicies","globalnetworkpolicies"]
+  verbs: ["*"]
+
+---
+
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: ee-calico-tiered-policy-passthru
+subjects:
+- kind: Group
+  name: system:authenticated
+  apiGroup: rbac.authorization.k8s.io
+- kind: Group
+  name: system:unauthenticated
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: ee-calico-tiered-policy-passthru
+  apiGroup: rbac.authorization.k8s.io
 
 ---
 
@@ -236,7 +288,7 @@ spec:
         - name: cnx-pull-secret
       containers:
       - name: cnx-apiserver
-        image: {{ registry or 'quay.io' }}/tigera/cnx-apiserver:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-apiserver:v2.3.0
         args:
           - "--secure-port=5443"
           - "--audit-policy-file=/etc/tigera/audit/policy.conf"
@@ -268,12 +320,12 @@ spec:
                 name: calico-config
                 key: etcd_cert
         volumeMounts:
+          - mountPath: /calico-secrets
+            name: etcd-certs
           - mountPath: /var/log/calico/audit
             name: var-log-calico-audit
           - mountPath: /etc/tigera/audit
             name: audit-policy-ee
-          - mountPath: /calico-secrets
-            name: etcd-certs
           # - mountPath: /code/apiserver.local.config/certificates
           #   name: apiserver-certs
         livenessProbe:
@@ -284,7 +336,7 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 10
       - name: cnx-queryserver
-        image: {{ registry or 'quay.io' }}/tigera/cnx-queryserver:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-queryserver:v2.3.0
         env:
           # Set queryserver logging to "info"
           - name: LOGLEVEL
@@ -315,6 +367,20 @@ spec:
               configMapKeyRef:
                 name: calico-config
                 key: etcd_cert
+          # Sets Default Security Groups if tigera-aws-config exists
+          - name: TIGERA_DEFAULT_SECURITY_GROUPS
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-aws-config
+                key: default_sgs
+                optional: true
+          # Sets Pod Security Group if tigera-aws-config exists
+          - name: TIGERA_POD_SECURITY_GROUP
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-aws-config
+                key: pod_sg
+                optional: true
         volumeMounts:
           - mountPath: /calico-secrets
             name: etcd-certs
@@ -398,7 +464,7 @@ spec:
           name: cnx-manager-tls
       containers:
       - name: cnx-manager
-        image: {{ registry or 'quay.io' }}/tigera/cnx-manager:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-manager:v2.3.0
         env:
           - name: CNX_WEB_AUTHENTICATION_TYPE
             valueFrom:
@@ -445,6 +511,11 @@ spec:
               configMapKeyRef:
                 name: tigera-cnx-manager-config
                 key: tigera.cnx-manager.alp-support
+          - name: CNX_CLUSTER_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: tigera-cnx-manager-config
+                key: tigera.cnx-manager.cluster-name
           - name: CNX_WEB_OAUTH_AUTHORITY
             valueFrom:
               configMapKeyRef:
@@ -455,18 +526,18 @@ spec:
               configMapKeyRef:
                 name: tigera-cnx-manager-config
                 key: tigera.cnx-manager.oauth-client-id
+        # Use the same liveness check as the proxy since
+        # the static content is only served over the localhost
+        # interface. Liveness check hits the static content through the proxy.
         livenessProbe:
           httpGet:
             path: /
-            port: 8443
+            port: 9443
             scheme: HTTPS
           initialDelaySeconds: 90
           periodSeconds: 10
-        volumeMounts:
-        - mountPath: /etc/cnx-manager-web-tls
-          name: cnx-manager-tls
       - name: cnx-manager-proxy
-        image: {{ registry or 'quay.io' }}/tigera/cnx-manager-proxy:v2.2.1
+        image: {{ registry or 'quay.io' }}/tigera/cnx-manager-proxy:v2.3.0
         env:
           - name: CNX_WEB_AUTHENTICATION_TYPE
             valueFrom:
@@ -520,7 +591,10 @@ metadata:
 rules:
 # "list" requests that the Tigera EE Manager needs
 - apiGroups: ["projectcalico.org","networking.k8s.io","extensions",""]
-  resources: ["tiers","networkpolicies","globalnetworkpolicies","namespaces","globalnetworksets"]
+  # Use both networkpolicies and tier.networkpolicies, and globalnetworkpolicies and tier.globalnetworkpolicies resource
+  # types to ensure identical behavior irrespective of the Calico RBAC scheme (see the ClusterRole
+  # "ee-calico-tiered-policy-passthru" for more details).
+  resources: ["tiers","networkpolicies","tier.networkpolicies","globalnetworkpolicies","tier.globalnetworkpolicies","namespaces","globalnetworksets"]
   verbs: ["watch","list"]
 # Access to flow logs, audit logs, and statistics
 - apiGroups: [""]
@@ -541,7 +615,10 @@ metadata:
 rules:
 # Full access to all network policies
 - apiGroups: ["projectcalico.org","networking.k8s.io","extensions"]
-  resources: ["tiers","networkpolicies","globalnetworkpolicies","globalnetworksets"]
+  # Use both networkpolicies and tier.networkpolicies, and globalnetworkpolicies and tier.globalnetworkpolicies resource
+  # types to ensure identical behavior irrespective of the Calico RBAC scheme (see the ClusterRole
+  # "ee-calico-tiered-policy-passthru" for more details).
+  resources: ["tiers","networkpolicies","tier.networkpolicies","globalnetworkpolicies","tier.globalnetworkpolicies","globalnetworksets"]
   verbs: ["create","update","delete","patch","get","watch","list"]
 # Additional "list" requests that the Tigera EE Manager needs
 - apiGroups: [""]
