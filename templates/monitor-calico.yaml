@@ -2,9 +2,49 @@
 # This manifest includes the following component versions:
 #   quay.io/prometheus/prometheus:v2.2.1
 #   quay.io/prometheus/alertmanager:v0.14.0
-#   docker.elastic.co/elasticsearch/elasticsearch-oss:6.4.1
-#   docker.elastic.co/kibana/kibana-oss:6.4.1
-#
+#   docker.elastic.co/elasticsearch/elasticsearch:6.4.3
+#   docker.elastic.co/kibana/kibana:6.4.3
+
+# This ConfigMap contains customizations for Elasticsearch and Curator.
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: tigera-es-config
+  namespace: calico-monitoring
+data:
+  # The name of the cluster.  This field is used as part of the index name of Elasticsearch logs, and is intended
+  # to allow multiple clusters to share one Elasticsearch cluster.  The value of this field must match that of 
+  # tigera.cnx-manager.cluster-name in tigera-cnx-manager-config.
+  tigera.elasticsearch.cluster-name: "cluster"
+  # The number of shards for index tigera_secure_ee_flows.
+  tigera.elasticsearch.flows-index-shards: "5"
+  # The retention period for flow logs, in days.  Logs written on a day that started at least this long ago are
+  # removed.  To keep logs for at least x days, use a retention period of x+1.
+  tigera.elasticsearch.flow-retention: "8"
+  # The retention period for audit logs, in days.  Logs written on a day that started at least this long ago are
+  # removed.  To keep logs for at least x days, use a retention period of x+1.
+  tigera.elasticsearch.audit-retention: "367"
+  # Whether to include the custom flow filters defined below in the fluentd config
+  # file.  Value must be "true" or "false".
+  tigera.elasticsearch.flow-filtering: "false"
+  # Flow filtering additional fluentd configuration.  This field is only used when
+  # tigera.elasticsearch-flow-filtering is set to "true".  The example here filters
+  # out all flows to/from the dev namespace.
+  tigera.elasticsearch.flow-filters.conf: |-
+    <filter flows>
+      @type grep
+      <exclude>
+        key source_namespace
+        pattern dev
+      </exclude>
+      <exclude>
+        key dest_namespace
+        pattern dev
+      </exclude>
+    </filter>
+
+---
+
 # This manifest installs the Service which gets traffic to the calico-node metrics
 # reporting endpoint.
 apiVersion: v1
@@ -314,8 +354,8 @@ spec:
     # If necessary, uncomment the line below and edit key:value pair with appropriate value for your environment.
     #node.role: infrastructure
   kibana:
-    image: {{ registry or 'docker.elastic.co' }}/kibana/kibana-oss:6.4.1
-  elastic-search-image: {{ registry or 'docker.elastic.co' }}/elasticsearch/elasticsearch-oss:6.4.1
+    image: {{ registry or 'docker.elastic.co' }}/kibana/kibana:6.4.3
+  elastic-search-image: {{ registry or 'docker.elastic.co' }}/elasticsearch/elasticsearch:6.4.3
   # For production deployments, modify the number of elasticsearch replicas accordingly
   client-node-replicas: 1
   master-node-replicas: 1
@@ -399,8 +439,23 @@ spec:
               mountPath: /var/log/calico
       containers:
         - name: fluentd
-          image: {{ registry or 'quay.io' }}/tigera/fluentd:v2.2.1
+          image: {{ registry or 'quay.io' }}/tigera/fluentd:v2.3.0
           env:
+            - name: ELASTIC_INDEX_SUFFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-es-config
+                  key: tigera.elasticsearch.cluster-name
+            - name: ELASTIC_FLOWS_INDEX_SHARDS
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-es-config
+                  key: tigera.elasticsearch.flows-index-shards
+            - name: FLUENTD_FLOW_FILTERS
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-es-config
+                  key: tigera.elasticsearch.flow-filtering
             - name: FLOW_LOG_FILE
               value: /var/log/calico/flowlogs/flows.log
             - name: ELASTIC_HOST
@@ -409,15 +464,170 @@ spec:
               value: "9200"
             - name: FLUENTD_ES_SECURE
               value: "false"
+            - name: AWS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: tigera-s3-archiving
+                  key: aws.key.id
+                  optional: true
+            - name: AWS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tigera-s3-archiving
+                  key: aws.secret.key
+                  optional: true
+            - name: S3_STORAGE
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-s3-archiving
+                  key: s3.storage
+                  optional: true
+            - name: S3_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-s3-archiving
+                  key: s3.bucket.name
+                  optional: true
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-s3-archiving
+                  key: aws.region
+                  optional: true
+            - name: S3_BUCKET_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-s3-archiving
+                  key: s3.bucket.path
+                  optional: true
+            - name: S3_FLUSH_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: tigera-s3-archiving
+                  key: s3.flush-interval
+                  optional: true
           volumeMounts:
             - name: var-log-calico
               mountPath: /var/log/calico
+            - name: es-config
+              mountPath: /etc/fluentd/flow-filters.conf
+              subPath: tigera.elasticsearch.flow-filters.conf
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /bin/readiness.sh
+            initialDelaySeconds: 60
+            periodSeconds: 60
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - /usr/bin/fluentd -c /fluentd/etc/fluent.conf -p /fluentd/plugins --dry-run && curl -s http://localhost:24220/api/plugins.json
+            initialDelaySeconds: 60
+            periodSeconds: 60
       volumes:
         - name: var-log-calico
           hostPath:
             type: DirectoryOrCreate
             path: /var/log/calico
+        - name: es-config
+          configMap:
+            name: tigera-es-config
+---
 
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: tigera-es-curator
+  namespace: calico-monitoring
+  labels:
+    k8s-app: es-curator
+spec:
+  schedule: "@daily"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          name: tigera-es-curator
+          namespace: calico-monitoring
+          labels:
+            k8s-app: es-curator
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            beta.kubernetes.io/os: linux
+          tolerations:
+            - key: node-role.kubernetes.io/master
+              effect: NoSchedule
+          imagePullSecrets:
+            - name: cnx-pull-secret      
+          containers:
+            - name: tigera-es-curator
+              image: {{ registry or 'quay.io' }}/tigera/es-curator:v2.3.0
+              env:
+                - name: ELASTIC_INDEX_SUFFIX
+                  valueFrom:
+                    configMapKeyRef:
+                      name: tigera-es-config
+                      key: tigera.elasticsearch.cluster-name
+                - name: EE_FLOWS_INDEX_RETENTION_PERIOD
+                  valueFrom:
+                    configMapKeyRef:
+                      name: tigera-es-config
+                      key: tigera.elasticsearch.flow-retention
+                - name: EE_AUDIT_INDEX_RETENTION_PERIOD
+                  valueFrom:
+                    configMapKeyRef:
+                      name: tigera-es-config
+                      key: tigera.elasticsearch.audit-retention
+                - name: ELASTIC_HOST
+                  value: elasticsearch-tigera-elasticsearch.calico-monitoring.svc.cluster.local
+                - name: ELASTIC_PORT
+                  value: "9200"
+                - name: ELASTIC_SSL_VERIFY
+                  value: "false"
+              livenessProbe:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - /usr/bin/curator --config /curator/curator_config.yaml --dry-run /curator/curator_action.yaml
+                initialDelaySeconds: 60
+                periodSeconds: 60
+---
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elastic-tsee-installer
+  namespace: calico-monitoring
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: cnx-pull-secret
+      containers:
+      - name: install
+        image: {{ registry or 'quay.io' }}/tigera/intrusion-detection-job-installer:v2.3.0
+        env:
+          - name: ELASTIC_HOST
+            value: elasticsearch-tigera-elasticsearch.calico-monitoring.svc.cluster.local
+          - name: ELASTIC_PORT
+            value: "9200" 
+          - name: KIBANA_HOST
+            value: kibana-tigera-elasticsearch.calico-monitoring.svc.cluster.local 
+          - name: KIBANA_PORT
+            value: "80" 
+          - name: ELASTIC_SCHEME
+            value: "http" 
+          - name: KIBANA_SCHEME
+            value: "http"
+          - name: START_XPACK_TRIAL
+            value: "true"
 ---
 
 # Network set for the K8s API Server's IP addresses.
@@ -430,7 +640,8 @@ metadata:
 spec:
   nets: {{ apiserver_ips }}
 ---
-# Allow access to Elasticsearch client nodes from Kibana and fluentd
+# Allow access to Elasticsearch client nodes from Kibana, fluentd, and the 
+# intrusion dection installer
 apiVersion: projectcalico.org/v3
 kind: NetworkPolicy
 metadata:
@@ -453,6 +664,18 @@ spec:
     protocol: TCP
     source:
       selector: name == 'kibana-tigera-elasticsearch'
+    destination:
+      ports: [9200]
+  - action: Allow
+    protocol: TCP
+    source:
+      selector: job-name == 'elastic-tsee-installer'
+    destination:
+      ports: [9200]
+  - action: Allow
+    protocol: TCP
+    source:
+      selector: k8s-app == 'es-curator'
     destination:
       ports: [9200]
 
@@ -521,6 +744,13 @@ spec:
       # Narrow this down to your management network or remove this
       # policy to block access to Kibana.
       nets: ["0.0.0.0/0"]
+    destination:
+      ports: [5601]
+  - action: Allow
+    protocol: TCP
+    source:
+      # Allow the installer to access Kibana
+      selector: job-name == 'elastic-tsee-installer'
     destination:
       ports: [5601]
 
