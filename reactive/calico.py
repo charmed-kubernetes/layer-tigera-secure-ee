@@ -304,8 +304,7 @@ def deploy_network_policy_controller():
         f.write(license_key)
     try:
         calicoctl('apply', '-f', license_key_path)
-    except CalledProcessError as e:
-        log(e.output)
+    except CalledProcessError:
         msg = 'Waiting to retry applying license-key'
         log(msg)
         status_set('waiting', msg)
@@ -397,7 +396,11 @@ def calicoctl(*args):
         image
     ]
     cmd += list(args)
-    return check_output(cmd)
+    try:
+        return check_output(cmd)
+    except CalledProcessError as e:
+        log(e.output)
+        raise
 
 
 def arch():
