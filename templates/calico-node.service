@@ -1,45 +1,46 @@
 [Unit]
 Description=calico node
-After=docker.service
-Requires=docker.service
+After=containerd.service
+Requires=containerd.service
 
 [Service]
 User=root
 Environment=ETCD_ENDPOINTS={{ connection_string }}
 PermissionsStartOnly=true
-ExecStartPre=-/usr/bin/docker rm -f calico-node
-ExecStart=/usr/bin/docker run --net=host --privileged --name=calico-node \
-  -e ETCD_ENDPOINTS={{ connection_string }} \
-  -e ETCD_CA_CERT_FILE={{ etcd_ca_path }} \
-  -e ETCD_CERT_FILE={{ etcd_cert_path }} \
-  -e ETCD_KEY_FILE={{ etcd_key_path }} \
-  -e NODENAME={{ nodename }} \
-  -e IP={{ ip }} \
-  -e NO_DEFAULT_POOLS=true \
-  -e AS= \
-  -e CALICO_LIBNETWORK_ENABLED=true \
-  -e IP6= \
-  -e CALICO_NETWORKING_BACKEND=bird \
-  -e CALICO_DISABLE_FILE_LOGGING=true \
-  -e FELIX_DEFAULTENDPOINTTOHOSTACTION=ACCEPT \
-  -e FELIX_IPV6SUPPORT=false \
-  -e FELIX_LOGSEVERITYSCREEN=info \
-  -e FELIX_HEALTHENABLED=true \
-  -e FELIX_PROMETHEUSREPORTERENABLED=true \
-  -e FELIX_PROMETHEUSREPORTERPORT=9081 \
-  -e FELIX_FLOWLOGSFILEENABLED=true \
-  -e FELIX_FLOWLOGSFILEINCLUDELABELS=true \
-  -e FELIX_FLOWLOGSFILEINCLUDEPOLICIES=true \
-  -e FELIX_FLOWLOGSENABLENETWORKSETS=true \
-  -v /var/run/calico:/var/run/calico \
-  -v /var/lib/calico:/var/lib/calico \
-  -v /lib/modules:/lib/modules \
-  -v /run/docker/plugins:/run/docker/plugins \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /var/log/calico:/var/log/calico \
-  -v /opt/calicoctl:/opt/calicoctl \
-  {{ registry or 'quay.io' }}/tigera/cnx-node:v2.3.0
-ExecStop=/usr/bin/docker rm -f calico-node
+ExecStartPre=-/usr/bin/ctr container delete calico-node
+ExecStart=/usr/bin/ctr run --net-host --privileged \
+  --env ETCD_ENDPOINTS={{ connection_string }} \
+  --env ETCD_CA_CERT_FILE={{ etcd_ca_path }} \
+  --env ETCD_CERT_FILE={{ etcd_cert_path }} \
+  --env ETCD_KEY_FILE={{ etcd_key_path }} \
+  --env NODENAME={{ nodename }} \
+  --env IP={{ ip }} \
+  --env NO_DEFAULT_POOLS=true \
+  --env AS= \
+  --env CALICO_LIBNETWORK_ENABLED=true \
+  --env IP6= \
+  --env CALICO_NETWORKING_BACKEND=bird \
+  --env CALICO_DISABLE_FILE_LOGGING=true \
+  --env FELIX_DEFAULTENDPOINTTOHOSTACTION=ACCEPT \
+  --env FELIX_IPV6SUPPORT=false \
+  --env FELIX_LOGSEVERITYSCREEN=info \
+  --env FELIX_HEALTHENABLED=true \
+  --env FELIX_PROMETHEUSREPORTERENABLED=true \
+  --env FELIX_PROMETHEUSREPORTERPORT=9081 \
+  --env FELIX_FLOWLOGSFILEENABLED=true \
+  --env FELIX_FLOWLOGSFILEINCLUDELABELS=true \
+  --env FELIX_FLOWLOGSFILEINCLUDEPOLICIES=true \
+  --env FELIX_FLOWLOGSENABLENETWORKSETS=true \
+  --mount type=bind,src=/var/run/calico,dst=/var/run/calico,options=rbind:rw \
+  --mount type=bind,src=/var/lib/calico,dst=/var/lib/calico,options=rbind:rw \
+  --mount type=bind,src=/lib/modules,dst=/lib/modules,options=rbind:rw \
+  --mount type=bind,src=/run/containerd/plugins,dst=/run/containerd/plugins,options=rbind:rw \
+  --mount type=bind,src=/run/containerd/containerd.sock,dst=/run/containerd/containerd.sock,options=rbind:rw \
+  --mount type=bind,src=/var/log/calico,dst=/var/log/calico,options=rbind:rw \
+  --mount type=bind,src=/opt/calicoctl,dst=/opt/calicoctl,options=rbind:rw \
+  {{ registry or 'quay.io' }}/tigera/cnx-node:v2.3.0 \
+  calico-node
+ExecStop=/usr/bin/ctr container delete calico-node
 Restart=always
 RestartSec=10
 

@@ -43,7 +43,7 @@ def install_calico_binaries():
     ''' Unpack the Calico binaries. '''
     # on intel, the resource is called 'calico'; other arches have a suffix
     architecture = arch()
-    if architecture == "amd64":
+    if architecture == 'amd64':
         resource_name = 'calico-cni'
     else:
         resource_name = 'calico-cni-{}'.format(architecture)
@@ -332,11 +332,11 @@ def registry_credentials_changed():
 
     creds = b64decode(encoded_creds).decode('utf-8')
     creds = json.loads(creds)
-    for server_name, server in creds['auths'].items():
-        auth = server['auth']
-        username, password = b64decode(auth).decode('utf-8').split(':')
-        cmd = ['docker', 'login', server_name, '-u', username, '-p', password]
-        check_call(cmd)
+    #for server_name, server in creds['auths'].items():
+    #    auth = server['auth']
+    #    username, password = b64decode(auth).decode('utf-8').split(':')
+    #    cmd = ['docker', 'login', server_name, '-u', username, '-p', password]
+    #    check_call(cmd)
 
     remove_state('calico.npc.deployed')
 
@@ -379,23 +379,34 @@ def read_file_to_base64(path):
 
 
 def calicoctl(*args):
+    directories = [
+        '/var/run/calico',
+        '/var/lib/calico',
+        '/run/containerd/plugins',
+        '/var/log/calico'
+    ]
+
+    for d in directories:
+        os.makedirs(d, exist_ok=True)
+
     etcd = endpoint_from_flag('etcd.available')
     registry = hookenv.config('registry') or 'quay.io'
     image = registry + '/tigera/calicoctl:v2.3.0'
     cmd = [
-        'docker', 'run',
-        '-v', CALICOCTL_PATH + ':' + CALICOCTL_PATH,
-        '-v', '/tmp:/tmp',
-        '-e', 'ETCD_ENDPOINTS=' + etcd.get_connection_string(),
-        '-e', 'ETCD_KEY_FILE=' + ETCD_KEY_PATH,
-        '-e', 'ETCD_CERT_FILE=' + ETCD_CERT_PATH,
-        '-e', 'ETCD_CA_CERT_FILE=' + ETCD_CA_PATH,
-        image
+        'ctr', 'run', '--rm', '--net-host',
+        '--mount', 'type=bind,src=' + CALICOCTL_PATH + ',dst=' + CALICOCTL_PATH + ',options=rbind:ro',
+        '--mount', 'type=bind,src=/tmp,dst=/tmp,options=rbind:rw',
+        '--env', 'ETCD_ENDPOINTS=' + etcd.get_connection_string(),
+        '--env', 'ETCD_KEY_FILE=' + ETCD_KEY_PATH,
+        '--env', 'ETCD_CERT_FILE=' + ETCD_CERT_PATH,
+        '--env', 'ETCD_CA_CERT_FILE=' + ETCD_CA_PATH,
+        image, 'calicoctl', 'calicoctl'
     ]
     cmd += list(args)
     try:
         return check_output(cmd)
     except CalledProcessError as e:
+        log(' '.join(cmd))
         log(e.output)
         raise
 
