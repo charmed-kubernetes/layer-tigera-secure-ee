@@ -1,14 +1,14 @@
 [Unit]
 Description=calico node
-After=containerd.service
-Requires=containerd.service
 
 [Service]
 User=root
 Environment=ETCD_ENDPOINTS={{ connection_string }}
 PermissionsStartOnly=true
-ExecStartPre=-/usr/bin/ctr container delete calico-node
-ExecStart=/usr/bin/ctr run --net-host --privileged \
+ExecStartPre=-/usr/local/bin/conctl delete calico-node
+ExecStart=/usr/local/bin/conctl run \
+  --net-host \
+  --privileged \
   --env ETCD_ENDPOINTS={{ connection_string }} \
   --env ETCD_CA_CERT_FILE={{ etcd_ca_path }} \
   --env ETCD_CERT_FILE={{ etcd_cert_path }} \
@@ -31,16 +31,16 @@ ExecStart=/usr/bin/ctr run --net-host --privileged \
   --env FELIX_FLOWLOGSFILEINCLUDELABELS=true \
   --env FELIX_FLOWLOGSFILEINCLUDEPOLICIES=true \
   --env FELIX_FLOWLOGSENABLENETWORKSETS=true \
-  --mount type=bind,src=/var/run/calico,dst=/var/run/calico,options=rbind:rw \
-  --mount type=bind,src=/var/lib/calico,dst=/var/lib/calico,options=rbind:rw \
-  --mount type=bind,src=/lib/modules,dst=/lib/modules,options=rbind:rw \
-  --mount type=bind,src=/run/containerd/plugins,dst=/run/containerd/plugins,options=rbind:rw \
-  --mount type=bind,src=/run/containerd/containerd.sock,dst=/run/containerd/containerd.sock,options=rbind:rw \
-  --mount type=bind,src=/var/log/calico,dst=/var/log/calico,options=rbind:rw \
-  --mount type=bind,src=/opt/calicoctl,dst=/opt/calicoctl,options=rbind:rw \
-  {{ registry or 'quay.io' }}/tigera/cnx-node:v2.3.0 \
-  calico-node
-ExecStop=/usr/bin/ctr container delete calico-node
+  --mount /var/run/calico:/var/run/calico \
+  --mount /var/lib/calico:/var/lib/calico \
+  --mount /lib/modules:/lib/modules \
+  --mount /run/containerd/plugins:/run/containerd/plugins \
+  --mount /run/containerd/containerd.sock:/run/containerd/containerd.sock \
+  --mount /var/log/calico:/var/log/calico \
+  --mount /opt/calicoctl:/opt/calicoctl \
+  --name calico-node \
+  {{ registry or 'quay.io' }}/tigera/cnx-node:v2.3.0
+ExecStop=/usr/local/bin/conctl delete calico-node
 Restart=always
 RestartSec=10
 

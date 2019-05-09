@@ -1,5 +1,7 @@
 import json
 import os
+
+from conctl import getContainerRuntimeCtl
 from base64 import b64decode, b64encode
 from socket import gethostname
 from subprocess import check_call, check_output, CalledProcessError
@@ -10,14 +12,17 @@ from charms.reactive import endpoint_from_flag
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
 from charmhelpers.core.hookenv import unit_private_ip
-from charmhelpers.core.host import service, service_start, service_running
 from charmhelpers.core.templating import render
+from charmhelpers.core.host import (arch, service, service_start,
+                                    service_running)
 
 # TODO:
 #   - Handle the 'stop' hook by stopping and uninstalling all the things.
 
 os.environ['PATH'] += os.pathsep + os.path.join(os.sep, 'snap', 'bin')
 
+CTL = ctl = getContainerRuntimeCtl()
+CALICO_IMAGE = '/tigera/calicoctl:v2.3.0'
 CALICOCTL_PATH = '/opt/calicoctl'
 ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
@@ -25,6 +30,16 @@ ETCD_CA_PATH = os.path.join(CALICOCTL_PATH, 'etcd-ca')
 CALICO_CIDR = '192.168.0.0/16'
 
 db = unitdata.kv()
+
+
+@when_not('conctl.installed')
+def install_conctl():
+    status_set('maintenance', 'Installing conctl')
+    try:
+        check_call(['/usr/bin/pip3', 'install', 'conctl'])
+    except (CalledProcessError, FileNotFoundError):
+        check_call(['/usr/bin/pip', 'install', 'conctl'])
+    set_state('conctl.installed')
 
 
 @hook('upgrade-charm')
@@ -130,7 +145,7 @@ def get_bind_address():
 
 
 @when('calico.binaries.installed', 'etcd.available',
-      'calico.etcd-credentials.installed')
+      'calico.etcd-credentials.installed', 'conctl.installed')
 @when_not('calico.service.installed')
 def install_calico_service():
     ''' Install the calico-node systemd service. '''
@@ -332,11 +347,14 @@ def registry_credentials_changed():
 
     creds = b64decode(encoded_creds).decode('utf-8')
     creds = json.loads(creds)
-    #for server_name, server in creds['auths'].items():
-    #    auth = server['auth']
-    #    username, password = b64decode(auth).decode('utf-8').split(':')
-    #    cmd = ['docker', 'login', server_name, '-u', username, '-p', password]
-    #    check_call(cmd)
+    for server_name, server in creds['auths'].items():
+        auth = server['auth']
+        username, password = b64decode(auth).decode('utf-8').split(':')
+        CTL.pull(
+            server_name + CALICO_IMAGE,
+            username=username,
+            password=password
+        )
 
     remove_state('calico.npc.deployed')
 
@@ -391,30 +409,23 @@ def calicoctl(*args):
 
     etcd = endpoint_from_flag('etcd.available')
     registry = hookenv.config('registry') or 'quay.io'
-    image = registry + '/tigera/calicoctl:v2.3.0'
-    cmd = [
-        'ctr', 'run', '--rm', '--net-host',
-        '--mount', 'type=bind,src=' + CALICOCTL_PATH + ',dst=' + CALICOCTL_PATH + ',options=rbind:ro',
-        '--mount', 'type=bind,src=/tmp,dst=/tmp,options=rbind:rw',
-        '--env', 'ETCD_ENDPOINTS=' + etcd.get_connection_string(),
-        '--env', 'ETCD_KEY_FILE=' + ETCD_KEY_PATH,
-        '--env', 'ETCD_CERT_FILE=' + ETCD_CERT_PATH,
-        '--env', 'ETCD_CA_CERT_FILE=' + ETCD_CA_PATH,
-        image, 'calicoctl', 'calicoctl'
-    ]
-    cmd += list(args)
-    try:
-        return check_output(cmd)
-    except CalledProcessError as e:
-        log(' '.join(cmd))
-        log(e.output)
-        raise
+    image = registry + CALICO_IMAGE
 
-
-def arch():
-    '''Return the package architecture as a string.'''
-    # Get the package architecture for this system.
-    architecture = check_output(['dpkg', '--print-architecture']).rstrip()
-    # Convert the binary result into a string.
-    architecture = architecture.decode('utf-8')
-    return architecture
+    CTL.run(
+        privileged=True,
+        net_host=True,
+        mounts={
+            CALICOCTL_PATH: CALICOCTL_PATH,
+            '/tmp': '/tmp'
+        },
+        environment={
+            'ETCD_ENDPOINTS': etcd.get_connection_string(),
+            'ETCD_KEY_FILE': ETCD_KEY_PATH,
+            'ETCD_CERT_FILE': ETCD_CERT_PATH,
+            'ETCD_CA_CERT_FILE': ETCD_CA_PATH
+        },
+        name='calicoctl',
+        image=image,
+        command='calicoctl',
+        args=args
+    )
