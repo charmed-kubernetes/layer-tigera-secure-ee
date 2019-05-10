@@ -32,16 +32,6 @@ CALICO_CIDR = '192.168.0.0/16'
 db = unitdata.kv()
 
 
-@when_not('conctl.installed')
-def install_conctl():
-    status_set('maintenance', 'Installing conctl')
-    try:
-        check_call(['/usr/bin/pip3', 'install', 'conctl'])
-    except (CalledProcessError, FileNotFoundError):
-        check_call(['/usr/bin/pip', 'install', 'conctl'])
-    set_state('conctl.installed')
-
-
 @hook('upgrade-charm')
 def upgrade_charm():
     remove_state('calico.binaries.installed')
@@ -145,7 +135,7 @@ def get_bind_address():
 
 
 @when('calico.binaries.installed', 'etcd.available',
-      'calico.etcd-credentials.installed', 'conctl.installed')
+      'calico.etcd-credentials.installed')
 @when_not('calico.service.installed')
 def install_calico_service():
     ''' Install the calico-node systemd service. '''
