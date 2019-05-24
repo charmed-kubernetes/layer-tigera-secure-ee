@@ -6,11 +6,13 @@ from base64 import b64decode, b64encode
 from socket import gethostname
 from subprocess import check_call, check_output, CalledProcessError
 
-from charms.reactive import when, when_not, when_any, set_state, remove_state
+from charms.reactive import (when, when_not, when_any, is_state, set_state,
+                             remove_state)
 from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
+from charmhelpers.core.hookenv import DEBUG, ERROR
 from charmhelpers.core.hookenv import unit_private_ip
 from charmhelpers.core.templating import render
 from charmhelpers.core.host import (arch, service, service_start,
@@ -22,8 +24,10 @@ from charmhelpers.core.host import (arch, service, service_start,
 os.environ['PATH'] += os.pathsep + os.path.join(os.sep, 'snap', 'bin')
 
 CTL = ctl = getContainerRuntimeCtl()
-CALICO_IMAGE = '/tigera/calicoctl:v2.3.0'
+CALICOCTL_IMAGE = '/tigera/calicoctl:v2.3.0'
 CALICOCTL_PATH = '/opt/calicoctl'
+CNXNODE_IMAGE = '/tigera/cnx-node:v2.3.0'
+DEFAULT_REGISTRY = 'quay.io'
 ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
 ETCD_CA_PATH = os.path.join(CALICOCTL_PATH, 'etcd-ca')
@@ -328,25 +332,38 @@ def ready():
 
 @when('config.changed.registry-credentials')
 def registry_credentials_changed():
-    status_set('maintenance', 'Applying registry credentials')
+    remove_state('calioco.image.pulled')
+
+
+@when_not('calioco.image.pulled')
+def pull_calicoctl_image():
+    status_set('maintenance', 'Pulling calicoctl image')
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
+    images = [CALICOCTL_IMAGE, CNXNODE_IMAGE]
+
     encoded_creds = hookenv.config('registry-credentials')
-
-    if not encoded_creds:
-        log('no registry-credentials, skipping docker config')
-        return
-
     creds = b64decode(encoded_creds).decode('utf-8')
-    creds = json.loads(creds)
-    for server_name, server in creds['auths'].items():
-        auth = server['auth']
-        username, password = b64decode(auth).decode('utf-8').split(':')
-        CTL.pull(
-            server_name + CALICO_IMAGE,
-            username=username,
-            password=password
-        )
+    if creds:
+        creds = json.loads(creds)
 
-    remove_state('calico.npc.deployed')
+    if not creds or not creds.get('auths') or \
+            registry not in creds.get('auths'):
+        for image in images:
+            CTL.pull(
+                registry + image,
+            )
+
+    else:
+        auth = creds['auths'][registry]['auth']
+        username, password = b64decode(auth).decode('utf-8').split(':')
+        for image in images:
+            CTL.pull(
+                registry + image,
+                username=username,
+                password=password
+            )
+
+    set_state('calioco.image.pulled')
 
 
 @when('config.changed.registry')
@@ -387,6 +404,9 @@ def read_file_to_base64(path):
 
 
 def calicoctl(*args):
+    if not is_state('calioco.image.pulled'):
+        pull_calicoctl_image()
+
     directories = [
         '/var/run/calico',
         '/var/lib/calico',
@@ -398,11 +418,13 @@ def calicoctl(*args):
         os.makedirs(d, exist_ok=True)
 
     etcd = endpoint_from_flag('etcd.available')
-    registry = hookenv.config('registry') or 'quay.io'
-    image = registry + CALICO_IMAGE
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
+    image = registry + CALICOCTL_IMAGE
 
-    CTL.run(
-        privileged=True,
+    # Make sure we've pulled the image.
+    registry_credentials_changed()
+
+    run = CTL.run(
         net_host=True,
         mounts={
             CALICOCTL_PATH: CALICOCTL_PATH,
@@ -416,6 +438,15 @@ def calicoctl(*args):
         },
         name='calicoctl',
         image=image,
+        remove=True,
         command='calicoctl',
         args=args
     )
+
+    if run.stderr:
+        log(' '.join(run.stderr.decode()), ERROR)
+        log(run.stderr.decode(), ERROR)
+
+    elif run.stdout:
+        log(' '.join(run.stderr.decode()), DEBUG)
+        log(run.stdout.decode(), DEBUG)

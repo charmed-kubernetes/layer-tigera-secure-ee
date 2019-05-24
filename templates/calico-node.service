@@ -7,6 +7,7 @@ Environment=ETCD_ENDPOINTS={{ connection_string }}
 PermissionsStartOnly=true
 ExecStartPre=-/usr/local/sbin/charm-env --charm tigera-secure-ee conctl delete calico-node
 ExecStart=/usr/local/sbin/charm-env --charm tigera-secure-ee conctl run \
+  --rm \
   --net-host \
   --privileged \
   --env ETCD_ENDPOINTS={{ connection_string }} \
@@ -34,13 +35,11 @@ ExecStart=/usr/local/sbin/charm-env --charm tigera-secure-ee conctl run \
   --mount /var/run/calico:/var/run/calico \
   --mount /var/lib/calico:/var/lib/calico \
   --mount /lib/modules:/lib/modules \
-  --mount /run/containerd/plugins:/run/containerd/plugins \
-  --mount /run/containerd/containerd.sock:/run/containerd/containerd.sock \
   --mount /var/log/calico:/var/log/calico \
   --mount /opt/calicoctl:/opt/calicoctl \
   --name calico-node \
   {{ registry or 'quay.io' }}/tigera/cnx-node:v2.3.0
-ExecStop=/usr/local/sbin/charm-env --charm tigera-secure-ee conctl delete calico-node
+ExecStop=-/usr/local/sbin/charm-env --charm tigera-secure-ee conctl delete calico-node
 Restart=always
 RestartSec=10
 
