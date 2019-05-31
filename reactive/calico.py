@@ -47,6 +47,7 @@ db = unitdata.kv()
 def upgrade_charm():
     remove_state('calico.binaries.installed')
     remove_state('calico.cni.configured')
+    remove_state('calico.image.pulled')
     try:
         log('Deleting /etc/cni/net.d/10-calico.conf')
         os.remove('/etc/cni/net.d/10-calico.conf')
@@ -339,11 +340,11 @@ def ready():
 
 @when('config.changed.registry-credentials')
 def registry_credentials_changed():
-    remove_state('calioco.image.pulled')
+    remove_state('calico.image.pulled')
 
 
 @when('calico.ctl.ready')
-@when_not('calioco.image.pulled')
+@when_not('calico.image.pulled')
 def pull_calicoctl_image():
     status_set('maintenance', 'Pulling calicoctl image')
     registry = hookenv.config('registry') or DEFAULT_REGISTRY
@@ -371,7 +372,7 @@ def pull_calicoctl_image():
                 password=password
             )
 
-    set_state('calioco.image.pulled')
+    set_state('calico.image.pulled')
 
 
 @when('config.changed.registry')
@@ -428,9 +429,6 @@ def calicoctl(*args):
     etcd = endpoint_from_flag('etcd.available')
     registry = hookenv.config('registry') or DEFAULT_REGISTRY
     image = registry + CALICOCTL_IMAGE
-
-    # Make sure we've pulled the image.
-    registry_credentials_changed()
 
     run = CTL.run(
         net_host=True,
