@@ -1,5 +1,6 @@
-import json
 import os
+import json
+import traceback
 
 from conctl import getContainerRuntimeCtl
 from base64 import b64decode, b64encode
@@ -23,7 +24,13 @@ from charmhelpers.core.host import (arch, service, service_start,
 
 os.environ['PATH'] += os.pathsep + os.path.join(os.sep, 'snap', 'bin')
 
-CTL = ctl = getContainerRuntimeCtl()
+try:
+    CTL = getContainerRuntimeCtl()
+    set_state('calico.ctl.ready')
+except RuntimeError:
+    log(traceback.format_exc())
+    remove_state('calico.ctl.ready')
+
 CALICOCTL_IMAGE = '/tigera/calicoctl:v2.3.0'
 CALICOCTL_PATH = '/opt/calicoctl'
 CNXNODE_IMAGE = '/tigera/cnx-node:v2.3.0'
@@ -335,6 +342,7 @@ def registry_credentials_changed():
     remove_state('calioco.image.pulled')
 
 
+@when('calico.ctl.ready')
 @when_not('calioco.image.pulled')
 def pull_calicoctl_image():
     status_set('maintenance', 'Pulling calicoctl image')
