@@ -1,5 +1,6 @@
 import os
 import json
+import gzip
 import traceback
 
 from conctl import getContainerRuntimeCtl
@@ -31,10 +32,7 @@ except RuntimeError:
     log(traceback.format_exc())
     remove_state('calico.ctl.ready')
 
-CALICOCTL_IMAGE = '/tigera/calicoctl:v2.3.0'
 CALICOCTL_PATH = '/opt/calicoctl'
-CNXNODE_IMAGE = '/tigera/cnx-node:v2.3.0'
-DEFAULT_REGISTRY = 'quay.io'
 ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
 ETCD_CA_PATH = os.path.join(CALICOCTL_PATH, 'etcd-ca')
@@ -163,7 +161,7 @@ def install_calico_service():
         'nodename': gethostname(),
         # specify IP so calico doesn't grab a silly one from, say, lxdbr0
         'ip': get_bind_address(),
-        'registry': hookenv.config('registry')
+        'cnx_node_image': hookenv.config('calico-node-image')
     })
     set_state('calico.service.installed')
 
@@ -347,30 +345,42 @@ def registry_credentials_changed():
 @when_not('calico.image.pulled')
 def pull_calicoctl_image():
     status_set('maintenance', 'Pulling calicoctl image')
-    registry = hookenv.config('registry') or DEFAULT_REGISTRY
-    images = [CALICOCTL_IMAGE, CNXNODE_IMAGE]
-
+    registry = hookenv.config('registry')
     encoded_creds = hookenv.config('registry-credentials')
     creds = b64decode(encoded_creds).decode('utf-8')
     if creds:
         creds = json.loads(creds)
+    images = {
+        hookenv.config('calico-node-image'):
+            resource_get('calico-node-image'),
+        hookenv.config('calicoctl-image'):
+            resource_get('calicoctl-image')
+    }
 
-    if not creds or not creds.get('auths') or \
-            registry not in creds.get('auths'):
-        for image in images:
-            CTL.pull(
-                registry + image,
-            )
-
-    else:
-        auth = creds['auths'][registry]['auth']
-        username, password = b64decode(auth).decode('utf-8').split(':')
-        for image in images:
-            CTL.pull(
-                registry + image,
-                username=username,
-                password=password
-            )
+    for name, path in images.items():
+        if not path or os.path.getsize(path) == 0:
+            status_set('maintenance', 'Pulling {} image'.format(name))
+            
+            if not creds or not creds.get('auths') or \
+                    registry not in creds.get('auths'):
+                CTL.pull(
+                    name,
+                )
+            else:
+                auth = creds['auths'][registry]['auth']
+                username, password = b64decode(auth).decode('utf-8').split(':')
+                CTL.pull(
+                    name,
+                    username=username,
+                    password=password
+                )
+        else:
+            status_set('maintenance', 'Loading {} image'.format(name))
+            unzipped = '/tmp/calico-node-image.tar'
+            with gzip.open(path, 'rb') as f_in:
+                with open(unzipped, 'wb') as f_out:
+                    f_out.write(f_in.read())
+            CTL.load(unzipped)
 
     set_state('calico.image.pulled')
 
@@ -427,8 +437,7 @@ def calicoctl(*args):
         os.makedirs(d, exist_ok=True)
 
     etcd = endpoint_from_flag('etcd.available')
-    registry = hookenv.config('registry') or DEFAULT_REGISTRY
-    image = registry + CALICOCTL_IMAGE
+    image = hookenv.config('calicoctl-image')
 
     run = CTL.run(
         net_host=True,

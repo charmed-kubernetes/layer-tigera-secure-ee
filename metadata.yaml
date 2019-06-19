@@ -34,3 +34,11 @@ resources:
     type: file
     filename: calico-cni.tar.gz
     description: 'Calico-cni resource tarball for arm64'
+  calico-node-image:
+    type: file
+    filename: calico-node-image.tar.gz
+    description: 'calico-node container image'
+  calicoctl-image:
+    type: file
+    filename: calicoctl-image.tar.gz
+    description: 'calicoctl container image'
