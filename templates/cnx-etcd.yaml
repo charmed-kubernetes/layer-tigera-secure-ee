@@ -455,7 +455,7 @@ spec:
       # cnx-manager-proxy.
       initContainers:
       - name: cnx-manager-init-pem # create /cache/pem for cnx-manager-proxy
-        image: {{ registry or 'docker.io' }}/alpine:3.7
+        image: {{ registry or 'docker.io/library' }}/alpine:3.7
         command: ['sh', '-c', 'cat /etc/cnx-manager-web-tls/cert /etc/cnx-manager-web-tls/key > /cache/pem']
         volumeMounts:
         - mountPath: /cache
