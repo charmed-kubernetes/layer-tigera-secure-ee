@@ -1,12 +1,12 @@
 options:
   calico-node-image:
     type: string
-    default: quay.io/tigera/cnx-node:v2.3.0
+    default: tigera/cnx-node:v2.3.0
     description: |
       The image id to use for cnx node.
   calicoctl-image:
     type: string
-    default: quay.io/tigera/calicoctl:v2.3.0
+    default: tigera/calicoctl:v2.3.0
     description: |
       The image id to use for calicoctl.
   ipip:
@@ -21,7 +21,7 @@ options:
       NAT outgoing traffic
   registry:
     type: string
-    default: "quay.io"
+    default: ""
     description: |
       Registry to use for images. If unspecified, defaults will be used:
       docker.io, quay.io, docker.elastic.co

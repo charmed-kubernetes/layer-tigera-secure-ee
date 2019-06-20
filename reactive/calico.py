@@ -32,6 +32,7 @@ except RuntimeError:
     log(traceback.format_exc())
     remove_state('calico.ctl.ready')
 
+DEFAULT_REGISTRY = 'quay.io'
 CALICOCTL_PATH = '/opt/calicoctl'
 ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
@@ -153,6 +154,11 @@ def install_calico_service():
     etcd = endpoint_from_flag('etcd.available')
     service_path = os.path.join(os.sep, 'lib', 'systemd', 'system',
                                 'calico-node.service')
+
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
+    image = hookenv.config('calico-node-image')
+    uri = os.path.join(registry, image)
+
     render('calico-node.service', service_path, {
         'connection_string': etcd.get_connection_string(),
         'etcd_key_path': ETCD_KEY_PATH,
@@ -161,7 +167,7 @@ def install_calico_service():
         'nodename': gethostname(),
         # specify IP so calico doesn't grab a silly one from, say, lxdbr0
         'ip': get_bind_address(),
-        'cnx_node_image': hookenv.config('calico-node-image')
+        'cnx_node_image': uri
     })
     set_state('calico.service.installed')
 
@@ -345,15 +351,15 @@ def registry_credentials_changed():
 @when_not('calico.image.pulled')
 def pull_calicoctl_image():
     status_set('maintenance', 'Pulling calicoctl image')
-    registry = hookenv.config('registry')
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
     encoded_creds = hookenv.config('registry-credentials')
     creds = b64decode(encoded_creds).decode('utf-8')
     if creds:
         creds = json.loads(creds)
     images = {
-        hookenv.config('calico-node-image'):
+        os.path.join(registry, hookenv.config('calico-node-image')):
             resource_get('calico-node-image'),
-        hookenv.config('calicoctl-image'):
+        os.path.join(registry, hookenv.config('calicoctl-image')):
             resource_get('calicoctl-image')
     }
 
@@ -437,7 +443,9 @@ def calicoctl(*args):
         os.makedirs(d, exist_ok=True)
 
     etcd = endpoint_from_flag('etcd.available')
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
     image = hookenv.config('calicoctl-image')
+    uri = os.path.join(registry, image)
 
     run = CTL.run(
         net_host=True,
@@ -452,7 +460,7 @@ def calicoctl(*args):
             'ETCD_CA_CERT_FILE': ETCD_CA_PATH
         },
         name='calicoctl',
-        image=image,
+        image=uri,
         remove=True,
         command='calicoctl',
         args=args
