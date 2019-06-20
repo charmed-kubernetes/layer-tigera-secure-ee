@@ -1,23 +1,38 @@
-import json
 import os
+import json
+import gzip
+import traceback
+
+from conctl import getContainerRuntimeCtl
 from base64 import b64decode, b64encode
 from socket import gethostname
 from subprocess import check_call, check_output, CalledProcessError
 
-from charms.reactive import when, when_not, when_any, set_state, remove_state
+from charms.reactive import (when, when_not, when_any, is_state, set_state,
+                             remove_state)
 from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
+from charmhelpers.core.hookenv import DEBUG, ERROR
 from charmhelpers.core.hookenv import unit_private_ip
-from charmhelpers.core.host import service, service_start, service_running
 from charmhelpers.core.templating import render
+from charmhelpers.core.host import (arch, service, service_start,
+                                    service_running)
 
 # TODO:
 #   - Handle the 'stop' hook by stopping and uninstalling all the things.
 
 os.environ['PATH'] += os.pathsep + os.path.join(os.sep, 'snap', 'bin')
 
+try:
+    CTL = getContainerRuntimeCtl()
+    set_state('calico.ctl.ready')
+except RuntimeError:
+    log(traceback.format_exc())
+    remove_state('calico.ctl.ready')
+
+DEFAULT_REGISTRY = 'quay.io'
 CALICOCTL_PATH = '/opt/calicoctl'
 ETCD_KEY_PATH = os.path.join(CALICOCTL_PATH, 'etcd-key')
 ETCD_CERT_PATH = os.path.join(CALICOCTL_PATH, 'etcd-cert')
@@ -31,6 +46,7 @@ db = unitdata.kv()
 def upgrade_charm():
     remove_state('calico.binaries.installed')
     remove_state('calico.cni.configured')
+    remove_state('calico.image.pulled')
     try:
         log('Deleting /etc/cni/net.d/10-calico.conf')
         os.remove('/etc/cni/net.d/10-calico.conf')
@@ -43,7 +59,7 @@ def install_calico_binaries():
     ''' Unpack the Calico binaries. '''
     # on intel, the resource is called 'calico'; other arches have a suffix
     architecture = arch()
-    if architecture == "amd64":
+    if architecture == 'amd64':
         resource_name = 'calico-cni'
     else:
         resource_name = 'calico-cni-{}'.format(architecture)
@@ -138,6 +154,11 @@ def install_calico_service():
     etcd = endpoint_from_flag('etcd.available')
     service_path = os.path.join(os.sep, 'lib', 'systemd', 'system',
                                 'calico-node.service')
+
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
+    image = hookenv.config('calico-node-image')
+    uri = os.path.join(registry, image)
+
     render('calico-node.service', service_path, {
         'connection_string': etcd.get_connection_string(),
         'etcd_key_path': ETCD_KEY_PATH,
@@ -146,7 +167,7 @@ def install_calico_service():
         'nodename': gethostname(),
         # specify IP so calico doesn't grab a silly one from, say, lxdbr0
         'ip': get_bind_address(),
-        'registry': hookenv.config('registry')
+        'cnx_node_image': uri
     })
     set_state('calico.service.installed')
 
@@ -323,22 +344,51 @@ def ready():
 
 @when('config.changed.registry-credentials')
 def registry_credentials_changed():
-    status_set('maintenance', 'Applying registry credentials')
+    remove_state('calico.image.pulled')
+
+
+@when('calico.ctl.ready')
+@when_not('calico.image.pulled')
+def pull_calicoctl_image():
+    status_set('maintenance', 'Pulling calicoctl image')
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
     encoded_creds = hookenv.config('registry-credentials')
-
-    if not encoded_creds:
-        log('no registry-credentials, skipping docker config')
-        return
-
     creds = b64decode(encoded_creds).decode('utf-8')
-    creds = json.loads(creds)
-    for server_name, server in creds['auths'].items():
-        auth = server['auth']
-        username, password = b64decode(auth).decode('utf-8').split(':')
-        cmd = ['docker', 'login', server_name, '-u', username, '-p', password]
-        check_call(cmd)
+    if creds:
+        creds = json.loads(creds)
+    images = {
+        os.path.join(registry, hookenv.config('calico-node-image')):
+            resource_get('calico-node-image'),
+        os.path.join(registry, hookenv.config('calicoctl-image')):
+            resource_get('calicoctl-image')
+    }
 
-    remove_state('calico.npc.deployed')
+    for name, path in images.items():
+        if not path or os.path.getsize(path) == 0:
+            status_set('maintenance', 'Pulling {} image'.format(name))
+            
+            if not creds or not creds.get('auths') or \
+                    registry not in creds.get('auths'):
+                CTL.pull(
+                    name,
+                )
+            else:
+                auth = creds['auths'][registry]['auth']
+                username, password = b64decode(auth).decode('utf-8').split(':')
+                CTL.pull(
+                    name,
+                    username=username,
+                    password=password
+                )
+        else:
+            status_set('maintenance', 'Loading {} image'.format(name))
+            unzipped = '/tmp/calico-node-image.tar'
+            with gzip.open(path, 'rb') as f_in:
+                with open(unzipped, 'wb') as f_out:
+                    f_out.write(f_in.read())
+            CTL.load(unzipped)
+
+    set_state('calico.image.pulled')
 
 
 @when('config.changed.registry')
@@ -379,31 +429,47 @@ def read_file_to_base64(path):
 
 
 def calicoctl(*args):
-    etcd = endpoint_from_flag('etcd.available')
-    registry = hookenv.config('registry') or 'quay.io'
-    image = registry + '/tigera/calicoctl:v2.3.0'
-    cmd = [
-        'docker', 'run',
-        '-v', CALICOCTL_PATH + ':' + CALICOCTL_PATH,
-        '-v', '/tmp:/tmp',
-        '-e', 'ETCD_ENDPOINTS=' + etcd.get_connection_string(),
-        '-e', 'ETCD_KEY_FILE=' + ETCD_KEY_PATH,
-        '-e', 'ETCD_CERT_FILE=' + ETCD_CERT_PATH,
-        '-e', 'ETCD_CA_CERT_FILE=' + ETCD_CA_PATH,
-        image
+    if not is_state('calioco.image.pulled'):
+        pull_calicoctl_image()
+
+    directories = [
+        '/var/run/calico',
+        '/var/lib/calico',
+        '/run/containerd/plugins',
+        '/var/log/calico'
     ]
-    cmd += list(args)
-    try:
-        return check_output(cmd)
-    except CalledProcessError as e:
-        log(e.output)
-        raise
 
+    for d in directories:
+        os.makedirs(d, exist_ok=True)
 
-def arch():
-    '''Return the package architecture as a string.'''
-    # Get the package architecture for this system.
-    architecture = check_output(['dpkg', '--print-architecture']).rstrip()
-    # Convert the binary result into a string.
-    architecture = architecture.decode('utf-8')
-    return architecture
+    etcd = endpoint_from_flag('etcd.available')
+    registry = hookenv.config('registry') or DEFAULT_REGISTRY
+    image = hookenv.config('calicoctl-image')
+    uri = os.path.join(registry, image)
+
+    run = CTL.run(
+        net_host=True,
+        mounts={
+            CALICOCTL_PATH: CALICOCTL_PATH,
+            '/tmp': '/tmp'
+        },
+        environment={
+            'ETCD_ENDPOINTS': etcd.get_connection_string(),
+            'ETCD_KEY_FILE': ETCD_KEY_PATH,
+            'ETCD_CERT_FILE': ETCD_CERT_PATH,
+            'ETCD_CA_CERT_FILE': ETCD_CA_PATH
+        },
+        name='calicoctl',
+        image=uri,
+        remove=True,
+        command='calicoctl',
+        args=args
+    )
+
+    if run.stderr:
+        log(' '.join(run.stderr.decode()), ERROR)
+        log(run.stderr.decode(), ERROR)
+
+    elif run.stdout:
+        log(' '.join(run.stderr.decode()), DEBUG)
+        log(run.stdout.decode(), DEBUG)
