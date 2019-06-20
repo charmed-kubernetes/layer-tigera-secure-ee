@@ -65,3 +65,6 @@ for arch in ${arches}; do
   popd
   rm -rf resource-build-$arch
 done
+
+touch calicoctl-image.tar.gz
+touch calico-node-image.tar.gz
