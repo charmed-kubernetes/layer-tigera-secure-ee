@@ -12,6 +12,7 @@ from charms.reactive import (when, when_not, when_any, is_state, set_state,
                              remove_state)
 from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
+from charms.reactive import data_changed
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
 from charmhelpers.core.hookenv import DEBUG, ERROR
@@ -119,7 +120,18 @@ def blocked_without_etcd():
 def install_etcd_credentials():
     etcd = endpoint_from_flag('etcd.available')
     etcd.save_client_credentials(ETCD_KEY_PATH, ETCD_CERT_PATH, ETCD_CA_PATH)
+    # record initial data so that we can detect changes
+    data_changed('calico.etcd.data', (etcd.get_connection_string(),
+                                      etcd.get_client_credentials()))
     set_state('calico.etcd-credentials.installed')
+
+
+@when('etcd.tls.available', 'calico.service.installed')
+def check_etcd_updates():
+    etcd = endpoint_from_flag('etcd.available')
+    if data_changed('calico.etcd.data', (etcd.get_connection_string(),
+                                         etcd.get_client_credentials())):
+        remove_state('calico.service.installed')
 
 
 def get_bind_address():
