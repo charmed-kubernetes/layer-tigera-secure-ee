@@ -135,6 +135,7 @@ def check_etcd_updates():
                                      ETCD_CERT_PATH,
                                      ETCD_CA_PATH)
         remove_state('calico.service.installed')
+        remove_state('calico.npc.deployed')
 
 
 def get_bind_address():
