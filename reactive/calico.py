@@ -131,6 +131,9 @@ def check_etcd_updates():
     etcd = endpoint_from_flag('etcd.available')
     if data_changed('calico.etcd.data', (etcd.get_connection_string(),
                                          etcd.get_client_credentials())):
+        etcd.save_client_credentials(ETCD_KEY_PATH,
+                                     ETCD_CERT_PATH,
+                                     ETCD_CA_PATH)
         remove_state('calico.service.installed')
 
 
