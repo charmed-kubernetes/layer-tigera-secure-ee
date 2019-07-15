@@ -7,6 +7,7 @@ metadata:
   namespace: kube-system
   labels:
     k8s-app: calico-kube-controllers
+    cdk-restart-on-ca-change: "true"
   annotations:
     scheduler.alpha.kubernetes.io/critical-pod: ''
 spec:
@@ -20,6 +21,10 @@ spec:
       namespace: kube-system
       labels:
         k8s-app: calico-kube-controllers
+      annotations:
+        # annotate etcd cert hash, so when the cert changes, k8s will restart
+        # the pods in this deployment
+        cdk-etcd-cert-hash: "{{ etcd_cert_hash }}"
     spec:
       nodeSelector:
         beta.kubernetes.io/os: linux

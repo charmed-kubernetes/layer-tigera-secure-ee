@@ -93,6 +93,7 @@ metadata:
   namespace: calico-monitoring
   labels:
     operator: prometheus
+    cdk-restart-on-ca-change: "true"
 spec:
   replicas: 1
   template:
@@ -185,6 +186,8 @@ kind: Deployment
 metadata:
   name: elasticsearch-operator
   namespace: calico-monitoring
+  labels:
+    cdk-restart-on-ca-change: "true"
 spec:
   replicas: 1
   template:
