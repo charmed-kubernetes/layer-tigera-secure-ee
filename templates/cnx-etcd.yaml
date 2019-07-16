@@ -263,6 +263,7 @@ metadata:
   labels:
     apiserver: "true"
     k8s-app: cnx-apiserver
+    cdk-restart-on-ca-change: "true"
 spec:
   replicas: 1
   strategy:
@@ -277,6 +278,10 @@ spec:
       labels:
         apiserver: "true"
         k8s-app: cnx-apiserver
+      annotations:
+        # annotate etcd cert hash, so when the cert changes, k8s will restart
+        # the pods in this deployment
+        cdk-etcd-cert-hash: "{{ etcd_cert_hash }}"
     spec:
       nodeSelector:
         beta.kubernetes.io/os: linux
@@ -423,6 +428,7 @@ metadata:
   namespace: kube-system
   labels:
     k8s-app: cnx-manager
+    cdk-restart-on-ca-change: "true"
 spec:
   replicas: 1
   strategy:
