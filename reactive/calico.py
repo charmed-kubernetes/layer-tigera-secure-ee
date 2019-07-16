@@ -1,3 +1,4 @@
+import hashlib
 import os
 import json
 import gzip
@@ -12,12 +13,13 @@ from charms.reactive import (when, when_not, when_any, is_state, set_state,
                              remove_state)
 from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
+from charms.reactive import data_changed
 from charmhelpers.core import hookenv, unitdata
 from charmhelpers.core.hookenv import log, status_set, resource_get
 from charmhelpers.core.hookenv import DEBUG, ERROR
 from charmhelpers.core.hookenv import unit_private_ip
 from charmhelpers.core.templating import render
-from charmhelpers.core.host import (arch, service, service_start,
+from charmhelpers.core.host import (arch, service, service_restart,
                                     service_running)
 
 # TODO:
@@ -47,6 +49,8 @@ def upgrade_charm():
     remove_state('calico.binaries.installed')
     remove_state('calico.cni.configured')
     remove_state('calico.image.pulled')
+    remove_state('calico.service.installed')
+    remove_state('calico.npc.deployed')
     try:
         log('Deleting /etc/cni/net.d/10-calico.conf')
         os.remove('/etc/cni/net.d/10-calico.conf')
@@ -119,7 +123,22 @@ def blocked_without_etcd():
 def install_etcd_credentials():
     etcd = endpoint_from_flag('etcd.available')
     etcd.save_client_credentials(ETCD_KEY_PATH, ETCD_CERT_PATH, ETCD_CA_PATH)
+    # record initial data so that we can detect changes
+    data_changed('calico.etcd.data', (etcd.get_connection_string(),
+                                      etcd.get_client_credentials()))
     set_state('calico.etcd-credentials.installed')
+
+
+@when('etcd.tls.available', 'calico.service.installed')
+def check_etcd_updates():
+    etcd = endpoint_from_flag('etcd.available')
+    if data_changed('calico.etcd.data', (etcd.get_connection_string(),
+                                         etcd.get_client_credentials())):
+        etcd.save_client_credentials(ETCD_KEY_PATH,
+                                     ETCD_CERT_PATH,
+                                     ETCD_CA_PATH)
+        remove_state('calico.service.installed')
+        remove_state('calico.npc.deployed')
 
 
 def get_bind_address():
@@ -169,17 +188,9 @@ def install_calico_service():
         'ip': get_bind_address(),
         'cnx_node_image': uri
     })
-    set_state('calico.service.installed')
-
-
-@when('calico.service.installed')
-@when_not('calico.service.started')
-def start_calico_service():
-    ''' Start the calico systemd service. '''
-    status_set('maintenance', 'Starting calico-node service.')
-    service_start('calico-node')
+    service_restart('calico-node')
     service('enable', 'calico-node')
-    set_state('calico.service.started')
+    set_state('calico.service.installed')
 
 
 @when('calico.binaries.installed', 'etcd.available',
@@ -239,7 +250,7 @@ def configure_master_cni():
     set_state('calico.cni.configured')
 
 
-@when('etcd.available', 'calico.cni.configured', 'calico.service.started',
+@when('etcd.available', 'calico.cni.configured', 'calico.service.installed',
       'cni.is-worker', 'kube-api-endpoint.available')
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
@@ -259,6 +270,7 @@ def deploy_network_policy_controller():
     etcd = endpoint_from_flag('etcd.available')
     encoded_creds = hookenv.config('registry-credentials')
     registry = hookenv.config('registry')
+    etcd_cert_hash = get_etcd_cert_hash()
     apiserver_ips = get_apiserver_ips()
     templates = []
 
@@ -277,14 +289,16 @@ def deploy_network_policy_controller():
             'etcd_ca': read_file_to_base64(ETCD_CA_PATH)
         }),
         ('calico-kube-controllers.yaml', {
-            'registry': registry
+            'registry': registry,
+            'etcd_cert_hash': etcd_cert_hash
         }),
         ('cnx-manager-tls-secret.yaml', {
             'key': read_file_to_base64(key_path),
             'cert': read_file_to_base64(cert_path)
         }),
         ('cnx-etcd.yaml', {
-            'registry': registry
+            'registry': registry,
+            'etcd_cert_hash': etcd_cert_hash
         }),
         ('cnx-policy.yaml', {})
     ]
@@ -332,7 +346,7 @@ def deploy_network_policy_controller():
     set_state('calico.npc.deployed')
 
 
-@when('calico.service.started', 'calico.pool.configured',
+@when('calico.service.installed', 'calico.pool.configured',
       'calico.cni.configured')
 @when_any('cni.is-master', 'calico.npc.deployed')
 def ready():
@@ -473,3 +487,10 @@ def calicoctl(*args):
     elif run.stdout:
         log(' '.join(run.stderr.decode()), DEBUG)
         log(run.stdout.decode(), DEBUG)
+
+
+def get_etcd_cert_hash():
+    with open(ETCD_CERT_PATH, 'rb') as f:
+        cert = f.read()
+    cert_hash = hashlib.sha256(cert).hexdigest()
+    return cert_hash

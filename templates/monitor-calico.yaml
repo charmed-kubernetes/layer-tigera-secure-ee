@@ -403,6 +403,7 @@ metadata:
   namespace: calico-monitoring
   labels:
     k8s-app: tigera-fluentd-node
+    cdk-restart-on-ca-change: "true"
 spec:
   selector:
     matchLabels:
