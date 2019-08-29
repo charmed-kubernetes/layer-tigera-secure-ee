@@ -1,6 +1,6 @@
 # This manifest deploys the Tigera Secure EE Kubernetes controllers.
 # See https://github.com/projectcalico/kube-controllers
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: calico-kube-controllers
@@ -12,6 +12,9 @@ metadata:
     scheduler.alpha.kubernetes.io/critical-pod: ''
 spec:
   # The controllers can only have a single active instance.
+  selector:
+    matchLabels:
+      k8s-app: calico-kube-controllers
   replicas: 1
   strategy:
     type: Recreate

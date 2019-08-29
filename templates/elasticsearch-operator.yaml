@@ -86,7 +86,7 @@ metadata:
 ---
 
 # This manifest deploys the Tigera Secure EE Prometheus Operator.
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: calico-prometheus-operator
@@ -95,11 +95,15 @@ metadata:
     operator: prometheus
     cdk-restart-on-ca-change: "true"
 spec:
+  selector:
+    matchLabels:
+      app: calico-prometheus-operator
   replicas: 1
   template:
     metadata:
       labels:
         operator: prometheus
+        app: calico-prometheus-operator
     spec:
       nodeSelector:
         beta.kubernetes.io/os: linux
