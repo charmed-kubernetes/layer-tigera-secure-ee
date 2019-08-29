@@ -13,7 +13,7 @@ metadata:
   name: calico-monitoring
 ---
 kind: NetworkPolicy
-apiVersion: extensions/v1beta1
+apiVersion: networking.k8s.io/v1
 metadata:
   name: default-deny
   namespace: calico-monitoring
@@ -185,7 +185,7 @@ subjects:
 ---
 
 # Elasticsearch operator
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: elasticsearch-operator
@@ -194,6 +194,9 @@ metadata:
     cdk-restart-on-ca-change: "true"
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      name: elasticsearch-operator
   template:
     metadata:
       labels:
