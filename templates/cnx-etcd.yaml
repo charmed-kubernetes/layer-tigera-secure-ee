@@ -255,7 +255,7 @@ data:
 
 ---
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cnx-apiserver
@@ -421,7 +421,7 @@ spec:
 
 ---
 
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cnx-manager
@@ -430,6 +430,9 @@ metadata:
     k8s-app: cnx-manager
     cdk-restart-on-ca-change: "true"
 spec:
+  selector:
+    matchLabels:
+      k8s-app: cnx-manager
   replicas: 1
   strategy:
     type: Recreate
