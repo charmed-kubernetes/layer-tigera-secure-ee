@@ -15,8 +15,9 @@ tags:
   - networking
 subordinate: true
 series:
-  - xenial
   - bionic
+  - xenial
+  - focal
 requires:
   etcd:
     interface: etcd
