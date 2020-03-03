@@ -237,7 +237,7 @@ def configure_cni():
         'kubeconfig_path': cni_config['kubeconfig_path']
     }
     render('10-calico.conflist', '/etc/cni/net.d/10-calico.conflist', context)
-    cni.set_config(cidr=CALICO_CIDR)
+    cni.set_config(cidr=CALICO_CIDR, cni_conf_file='10-calico.conflist')
     set_state('calico.cni.configured')
 
 
@@ -246,7 +246,7 @@ def configure_cni():
 def configure_master_cni():
     status_set('maintenance', 'Configuring Calico CNI')
     cni = endpoint_from_flag('cni.is-master')
-    cni.set_config(cidr=CALICO_CIDR)
+    cni.set_config(cidr=CALICO_CIDR, cni_conf_file='10-calico.conflist')
     set_state('calico.cni.configured')
 
 
