@@ -461,24 +461,29 @@ def calicoctl(*args):
     image = hookenv.config('calicoctl-image')
     uri = os.path.join(registry, image)
 
-    run = CTL.run(
-        net_host=True,
-        mounts={
-            CALICOCTL_PATH: CALICOCTL_PATH,
-            '/tmp': '/tmp'
-        },
-        environment={
-            'ETCD_ENDPOINTS': etcd.get_connection_string(),
-            'ETCD_KEY_FILE': ETCD_KEY_PATH,
-            'ETCD_CERT_FILE': ETCD_CERT_PATH,
-            'ETCD_CA_CERT_FILE': ETCD_CA_PATH
-        },
-        name='calicoctl',
-        image=uri,
-        remove=True,
-        command='calicoctl',
-        args=args
-    )
+    try:
+        run = CTL.run(
+            net_host=True,
+            mounts={
+                CALICOCTL_PATH: CALICOCTL_PATH,
+                '/tmp': '/tmp'
+            },
+            environment={
+                'ETCD_ENDPOINTS': etcd.get_connection_string(),
+                'ETCD_KEY_FILE': ETCD_KEY_PATH,
+                'ETCD_CERT_FILE': ETCD_CERT_PATH,
+                'ETCD_CA_CERT_FILE': ETCD_CA_PATH
+            },
+            name='calicoctl',
+            image=uri,
+            remove=True,
+            command='calicoctl',
+            args=args
+        )
+    except CalledProcessError as e:
+        log(e.stdout)
+        log(e.stderr)
+        raise
 
     if run.stderr:
         log(' '.join(run.stderr.decode()), ERROR)
