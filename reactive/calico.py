@@ -58,6 +58,11 @@ def upgrade_charm():
         log(e)
 
 
+@hook('pre-series-upgrade')
+def pre_series_upgrade():
+    status_set('blocked', 'Series upgrade in progress')
+
+
 @when_not('calico.binaries.installed')
 def install_calico_binaries():
     ''' Unpack the Calico binaries. '''
@@ -349,6 +354,7 @@ def deploy_network_policy_controller():
 @when('calico.service.installed', 'calico.pool.configured',
       'calico.cni.configured')
 @when_any('cni.is-master', 'calico.npc.deployed')
+@when_not('upgrade.series.in-progress')
 def ready():
     if not service_running('calico-node'):
         status_set('waiting', 'Waiting for service: calico-node')
@@ -380,7 +386,7 @@ def pull_calicoctl_image():
     for name, path in images.items():
         if not path or os.path.getsize(path) == 0:
             status_set('maintenance', 'Pulling {} image'.format(name))
-            
+
             if not creds or not creds.get('auths') or \
                     registry not in creds.get('auths'):
                 CTL.pull(
