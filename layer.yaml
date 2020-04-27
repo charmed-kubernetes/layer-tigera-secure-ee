@@ -3,4 +3,5 @@ includes:
   - 'interface:kubernetes-cni'
   - 'interface:http'
   - 'layer:basic'
+  - 'layer:status'
 repo: https://github.com/juju-solutions/layer-tigera-secure-ee.git

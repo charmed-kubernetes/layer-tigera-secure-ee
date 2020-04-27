@@ -15,12 +15,13 @@ from charms.reactive import hook
 from charms.reactive import endpoint_from_flag
 from charms.reactive import data_changed
 from charmhelpers.core import hookenv, unitdata
-from charmhelpers.core.hookenv import log, status_set, resource_get
+from charmhelpers.core.hookenv import log, resource_get
 from charmhelpers.core.hookenv import DEBUG, ERROR
 from charmhelpers.core.hookenv import unit_private_ip
 from charmhelpers.core.templating import render
 from charmhelpers.core.host import (arch, service, service_restart,
                                     service_running)
+from charms.layer import status
 
 # TODO:
 #   - Handle the 'stop' hook by stopping and uninstalling all the things.
@@ -58,6 +59,11 @@ def upgrade_charm():
         log(e)
 
 
+@hook('pre-series-upgrade')
+def pre_series_upgrade():
+    status.blocked('Series upgrade in progress')
+
+
 @when_not('calico.binaries.installed')
 def install_calico_binaries():
     ''' Unpack the Calico binaries. '''
@@ -73,23 +79,23 @@ def install_calico_binaries():
     except Exception:
         message = 'Error fetching the calico resource.'
         log(message)
-        status_set('blocked', message)
+        status.blocked(message)
         return
 
     if not archive:
         message = 'Missing calico resource.'
         log(message)
-        status_set('blocked', message)
+        status.blocked(message)
         return
 
     filesize = os.stat(archive).st_size
     if filesize < 1000000:
         message = 'Incomplete calico resource'
         log(message)
-        status_set('blocked', message)
+        status.blocked(message)
         return
 
-    status_set('maintenance', 'Unpacking calico resource.')
+    status.maintenance('Unpacking calico resource.')
 
     charm_dir = os.getenv('CHARM_DIR')
     unpack_path = os.path.join(charm_dir, 'files', 'calico')
@@ -115,7 +121,7 @@ def install_calico_binaries():
 @when('calico.binaries.installed')
 @when_not('etcd.connected')
 def blocked_without_etcd():
-    status_set('blocked', 'Waiting for relation to etcd')
+    status.blocked('Waiting for relation to etcd')
 
 
 @when('etcd.tls.available')
@@ -169,7 +175,7 @@ def get_bind_address():
 @when_not('calico.service.installed')
 def install_calico_service():
     ''' Install the calico-node systemd service. '''
-    status_set('maintenance', 'Installing calico-node service.')
+    status.maintenance('Installing calico-node service.')
     etcd = endpoint_from_flag('etcd.available')
     service_path = os.path.join(os.sep, 'lib', 'systemd', 'system',
                                 'calico-node.service')
@@ -198,7 +204,7 @@ def install_calico_service():
 @when_not('calico.pool.configured')
 def configure_calico_pool():
     ''' Configure Calico IP pool. '''
-    status_set('maintenance', 'Configuring Calico IP pool')
+    status.maintenance('Configuring Calico IP pool')
     config = hookenv.config()
     context = {
         'cidr': CALICO_CIDR,
@@ -209,7 +215,7 @@ def configure_calico_pool():
     try:
         calicoctl('apply', '-f', '/tmp/calico-pool.yaml')
     except CalledProcessError:
-        status_set('waiting', 'Waiting to retry calico pool configuration')
+        status.waiting('Waiting to retry calico pool configuration')
         return
     set_state('calico.pool.configured')
 
@@ -224,7 +230,7 @@ def reconfigure_calico_pool():
 @when_not('calico.cni.configured')
 def configure_cni():
     ''' Configure Calico CNI. '''
-    status_set('maintenance', 'Configuring Calico CNI')
+    status.maintenance('Configuring Calico CNI')
     cni = endpoint_from_flag('cni.is-worker')
     etcd = endpoint_from_flag('etcd.available')
     os.makedirs('/etc/cni/net.d', exist_ok=True)
@@ -244,7 +250,7 @@ def configure_cni():
 @when('etcd.available', 'cni.is-master')
 @when_not('calico.cni.configured')
 def configure_master_cni():
-    status_set('maintenance', 'Configuring Calico CNI')
+    status.maintenance('Configuring Calico CNI')
     cni = endpoint_from_flag('cni.is-master')
     cni.set_config(cidr=CALICO_CIDR, cni_conf_file='10-calico.conflist')
     set_state('calico.cni.configured')
@@ -255,7 +261,7 @@ def configure_master_cni():
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
-    status_set('maintenance', 'Applying registry credentials secret')
+    status.maintenance('Applying registry credentials secret')
 
     # FIXME: We're just stealing a server key and cert from a random
     # worker. What should really go here?
@@ -264,7 +270,7 @@ def deploy_network_policy_controller():
     if not os.path.exists(key_path) or not os.path.exists(cert_path):
         msg = 'Waiting for cert generation'
         log(msg)
-        hookenv.status_set('waiting', msg)
+        status.waiting(msg)
         return
 
     etcd = endpoint_from_flag('etcd.available')
@@ -318,7 +324,7 @@ def deploy_network_policy_controller():
         ]
 
     for template, context in templates:
-        status_set('maintenance', 'Applying ' + template)
+        status.maintenance('Applying ' + template)
         dest = '/tmp/' + template
         render(template, dest, context)
         try:
@@ -326,7 +332,7 @@ def deploy_network_policy_controller():
         except CalledProcessError:
             msg = 'Waiting to retry applying ' + template
             log(msg)
-            status_set('waiting', msg)
+            status.waiting(msg)
             return
 
     license_key_b64 = hookenv.config('license-key')
@@ -339,7 +345,7 @@ def deploy_network_policy_controller():
     except CalledProcessError:
         msg = 'Waiting to retry applying license-key'
         log(msg)
-        status_set('waiting', msg)
+        status.waiting(msg)
         return
 
     db.set('tigera.apiserver_ips_used', apiserver_ips)
@@ -349,11 +355,12 @@ def deploy_network_policy_controller():
 @when('calico.service.installed', 'calico.pool.configured',
       'calico.cni.configured')
 @when_any('cni.is-master', 'calico.npc.deployed')
+@when_not('upgrade.series.in-progress')
 def ready():
     if not service_running('calico-node'):
-        status_set('waiting', 'Waiting for service: calico-node')
+        status.waiting('Waiting for service: calico-node')
     else:
-        status_set('active', 'Calico is active')
+        status.active('Calico is active')
 
 
 @when('config.changed.registry-credentials')
@@ -364,7 +371,7 @@ def registry_credentials_changed():
 @when('calico.ctl.ready')
 @when_not('calico.image.pulled')
 def pull_calicoctl_image():
-    status_set('maintenance', 'Pulling calicoctl image')
+    status.maintenance('Pulling calicoctl image')
     registry = hookenv.config('registry') or DEFAULT_REGISTRY
     encoded_creds = hookenv.config('registry-credentials')
     creds = b64decode(encoded_creds).decode('utf-8')
@@ -379,8 +386,8 @@ def pull_calicoctl_image():
 
     for name, path in images.items():
         if not path or os.path.getsize(path) == 0:
-            status_set('maintenance', 'Pulling {} image'.format(name))
-            
+            status.maintenance('Pulling {} image'.format(name))
+
             if not creds or not creds.get('auths') or \
                     registry not in creds.get('auths'):
                 CTL.pull(
@@ -395,7 +402,7 @@ def pull_calicoctl_image():
                     password=password
                 )
         else:
-            status_set('maintenance', 'Loading {} image'.format(name))
+            status.maintenance('Loading {} image'.format(name))
             unzipped = '/tmp/calico-node-image.tar'
             with gzip.open(path, 'rb') as f_in:
                 with open(unzipped, 'wb') as f_out:
