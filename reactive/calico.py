@@ -270,7 +270,7 @@ def deploy_network_policy_controller():
     if not os.path.exists(key_path) or not os.path.exists(cert_path):
         msg = 'Waiting for cert generation'
         log(msg)
-        hookenv.status.waiting(msg)
+        status.waiting(msg)
         return
 
     etcd = endpoint_from_flag('etcd.available')
