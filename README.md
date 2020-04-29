@@ -17,7 +17,7 @@ properly deploy.
 Documentation for how to use this with the Charmed Distribution of Kubernetes
 can be found here: [Using Tigera Secure EE with CDK][]
 
-[Using Tigera Secure EE with CDK]: https://github.com/juju-solutions/bundle-canonical-kubernetes/wiki/Using-Tigera-Secure-EE-with-CDK
+[Using Tigera Secure EE with CDK]: https://ubuntu.com/kubernetes/docs/tigera-secure-ee
 
 ## Further information
 
