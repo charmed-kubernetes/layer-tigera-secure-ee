@@ -48,3 +48,9 @@ options:
       provides a monitoring and metrics solution for use with Tigera EE that
       is suitable for proof-of-concept purposes, but is not recommended for
       production use.
+  ignore-loose-rpf:
+    type: boolean
+    default: false
+    description: |
+      Enable or disable IgnoreLooseRPF for Calico Felix.  This is only used
+      when rp_filter is set to a value of 2.
