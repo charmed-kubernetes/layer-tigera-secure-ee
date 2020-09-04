@@ -32,6 +32,7 @@ ExecStart=/usr/local/sbin/charm-env --charm tigera-secure-ee conctl run \
   --env FELIX_FLOWLOGSFILEINCLUDELABELS=true \
   --env FELIX_FLOWLOGSFILEINCLUDEPOLICIES=true \
   --env FELIX_FLOWLOGSENABLENETWORKSETS=true \
+  --env FELIX_IGNORELOOSERPF={{ ignore_loose_rpf | string | lower }} \
   --mount /var/run/calico:/var/run/calico \
   --mount /var/lib/calico:/var/lib/calico \
   --mount /lib/modules:/lib/modules \
