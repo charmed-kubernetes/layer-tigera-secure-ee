@@ -194,6 +194,8 @@ def install_calico_service():
         'ip': get_bind_address(),
         'cnx_node_image': uri,
         'ignore_loose_rpf': hookenv.config('ignore-loose-rpf'),
+        'lc_all': os.environ.get('LC_ALL', 'C.UTF-8'),
+        'lang': os.environ.get('LANG', 'C.UTF-8')
     })
     service_restart('calico-node')
     service('enable', 'calico-node')
