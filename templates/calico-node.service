@@ -4,6 +4,10 @@ Description=calico node
 [Service]
 User=root
 Environment=ETCD_ENDPOINTS={{ connection_string }}
+# Setting LC_ALL and LANG works around a bug that only occurs on Xenial
+# https://bugs.launchpad.net/bugs/1911220
+Environment=LC_ALL={{ lc_all }}
+Environment=LANG={{ lang }}
 PermissionsStartOnly=true
 ExecStartPre=-/usr/local/sbin/charm-env --charm tigera-secure-ee conctl delete calico-node
 ExecStart=/usr/local/sbin/charm-env --charm tigera-secure-ee conctl run \
