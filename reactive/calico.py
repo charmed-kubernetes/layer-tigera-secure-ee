@@ -248,7 +248,8 @@ def configure_cni():
         'etcd_key_path': ETCD_KEY_PATH,
         'etcd_cert_path': ETCD_CERT_PATH,
         'etcd_ca_path': ETCD_CA_PATH,
-        'kubeconfig_path': cni_config['kubeconfig_path']
+        'kubeconfig_path': cni_config.get('kubeconfig_path',
+                                          '/root/cdk/kubeconfig')
     }
     render('10-calico.conflist', '/etc/cni/net.d/10-calico.conflist', context)
     cni.set_config(cidr=CALICO_CIDR, cni_conf_file='10-calico.conflist')
