@@ -4,4 +4,5 @@ includes:
   - 'interface:http'
   - 'layer:basic'
   - 'layer:status'
+  - 'layer:kubernetes-common'
 repo: https://github.com/juju-solutions/layer-tigera-secure-ee.git
