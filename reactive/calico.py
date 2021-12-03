@@ -234,12 +234,12 @@ def reconfigure_calico_pool():
     remove_state('calico.pool.configured')
 
 
-@when('etcd.available', 'cni.is-worker')
+@when('etcd.available', 'cni.connected')
 @when_not('calico.cni.configured')
 def configure_cni():
     ''' Configure Calico CNI. '''
     status.maintenance('Configuring Calico CNI')
-    cni = endpoint_from_flag('cni.is-worker')
+    cni = endpoint_from_flag('cni.connected')
     etcd = endpoint_from_flag('etcd.available')
     os.makedirs('/etc/cni/net.d', exist_ok=True)
     cni_config = cni.get_config()
@@ -256,17 +256,8 @@ def configure_cni():
     set_state('calico.cni.configured')
 
 
-@when('etcd.available', 'cni.is-master')
-@when_not('calico.cni.configured')
-def configure_master_cni():
-    status.maintenance('Configuring Calico CNI')
-    cni = endpoint_from_flag('cni.is-master')
-    cni.set_config(cidr=CALICO_CIDR, cni_conf_file='10-calico.conflist')
-    set_state('calico.cni.configured')
-
-
 @when('etcd.available', 'calico.cni.configured', 'calico.service.installed',
-      'cni.is-worker', 'kube-api-endpoint.available')
+      'cni.connected', 'kube-api-endpoint.available')
 @when_not('calico.npc.deployed')
 def deploy_network_policy_controller():
     ''' Deploy the Calico network policy controller. '''
@@ -362,8 +353,7 @@ def deploy_network_policy_controller():
 
 
 @when('calico.service.installed', 'calico.pool.configured',
-      'calico.cni.configured')
-@when_any('cni.is-master', 'calico.npc.deployed')
+      'calico.cni.configured', 'calico.npc.deployed')
 @when_not('upgrade.series.in-progress')
 def ready():
     if not service_running('calico-node'):
