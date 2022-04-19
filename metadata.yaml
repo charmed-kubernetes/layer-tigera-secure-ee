@@ -11,6 +11,7 @@ description: |
   Deploys Tigera Secure EE as a background service and configures CNI for use
   with Tigera Secure EE on any principal charm that implements the
   kubernetes-cni interface.
+docs: https://discourse.charmhub.io/t/tigera-secure-ee-docs-index/6215
 tags:
   - networking
 subordinate: true
