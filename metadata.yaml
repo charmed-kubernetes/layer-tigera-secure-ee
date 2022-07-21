@@ -19,7 +19,6 @@ series:
   - focal
   - jammy
   - bionic
-  - xenial
 requires:
   etcd:
     interface: etcd
